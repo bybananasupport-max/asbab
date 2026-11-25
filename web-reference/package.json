@@ -1,0 +1,12 @@
+{
+  "name": "asbab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Asbab: pembantu peribadi proaktif Amin.",
+  "scripts": { "dev": "netlify dev" },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "web-push": "^3.6.7"
+  }
+}
