@@ -1,0 +1,19 @@
+/* Android app additions on top of style.css (kept separate so style.css stays close to web-reference). */
+
+/* Safe areas: Capacitor injects --safe-area-inset-* (SystemBars insetsHandling "css"). */
+:root {
+  --sa-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sa-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+main#view { padding-top: calc(16px + var(--sa-top)); padding-bottom: calc(var(--nav-h) + 24px + var(--sa-bottom)); }
+nav.bar { bottom: calc(12px + var(--sa-bottom)); }
+.composer { bottom: calc(var(--nav-h) + 22px + var(--sa-bottom)); }
+.sheet { bottom: calc(12px + var(--sa-bottom)); }
+@media (min-width: 900px) {
+  main#view { padding-top: calc(32px + var(--sa-top)); }
+  .composer { bottom: calc(20px + var(--sa-bottom)); }
+}
+
+/* No text selection or tap flash on controls; feels like a native app. */
+button, nav.bar a, .btn { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+button[disabled] { opacity: 0.5; }

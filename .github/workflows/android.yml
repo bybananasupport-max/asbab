@@ -1,0 +1,109 @@
+# Builds the Asbab Android APK.
+# - Pull requests: run tests, build the APK and upload it as an artifact (test APK).
+# - Push to main: same, plus a GitHub Release with the APK so it can be downloaded from the phone.
+# - Manual: Actions tab > "Bina APK Asbab" > Run workflow.
+name: Bina APK Asbab
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/android.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    env:
+      ASBAB_VERSION_CODE: ${{ github.run_number }}
+      ASBAB_VERSION_NAME: 0.1.${{ github.run_number }}
+      HAS_KEYSTORE: ${{ secrets.ASBAB_KEYSTORE_BASE64 != '' && secrets.ASBAB_KEYSTORE_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Copy web app into Android project
+        run: npm run build
+
+      - name: Prepare release keystore (from secrets)
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ASBAB_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/asbab.jks"
+          echo "ASBAB_KEYSTORE_PATH=$RUNNER_TEMP/asbab.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: app/android
+        env:
+          ASBAB_KEYSTORE_PASSWORD: ${{ secrets.ASBAB_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/asbab-$ASBAB_VERSION_NAME.apk"
+
+      - name: Build debug APK (no keystore secret yet)
+        if: env.HAS_KEYSTORE != 'true'
+        working-directory: app/android
+        run: |
+          echo "::warning::Secret ASBAB_KEYSTORE_BASE64 tiada, jadi APK debug dibina. Lihat README untuk tambah keystore."
+          ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/asbab-$ASBAB_VERSION_NAME-debug.apk"
+
+      - name: Remove keystore file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asbab.jks"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: asbab-${{ env.ASBAB_VERSION_NAME }}
+          path: ${{ runner.temp }}/asbab-*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub Release (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          KIND=$([ "$HAS_KEYSTORE" = "true" ] && echo "ditandatangani (release)" || echo "debug")
+          gh release create "v$ASBAB_VERSION_NAME" "$RUNNER_TEMP"/asbab-*.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Asbab $ASBAB_VERSION_NAME" \
+            --notes "APK Asbab versi $ASBAB_VERSION_NAME ($KIND), dibina daripada commit ${GITHUB_SHA::7}. Muat turun fail .apk di bawah dan buka di telefon untuk pasang."

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070b1a">
+  <title>Asbab</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Plus+Jakarta+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="android.css">
+</head>
+<body>
+  <div id="scene" aria-hidden="true"></div>
+  <div id="wall" aria-hidden="true"></div>
+  <div id="app" hidden>
+    <main id="view"></main>
+    <nav class="bar" aria-label="Menu utama"></nav>
+  </div>
+  <!-- vendor/capacitor.js is copied from node_modules by scripts/copy-vendor.mjs -->
+  <script src="vendor/capacitor.js"></script>
+  <script src="core.js"></script>
+  <script src="store.js"></script>
+  <script src="localapi.js"></script>
+  <script src="native.js"></script>
+  <script src="scene.js"></script>
+  <script src="theme.js"></script>
+  <script src="views.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
