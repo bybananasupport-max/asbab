@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Asbab launcher icon: crescent moon with a small star (same design as web-reference/public/icon.svg). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#EDE6CF" android:pathData="M32.90,54.00a21.10,21.10 0 1,0 42.20,0a21.10,21.10 0 1,0 -42.20,0Z" />
+    <path android:fillColor="#0E1630" android:pathData="M42.70,49.80a19.70,19.70 0 1,0 39.40,0a19.70,19.70 0 1,0 -39.40,0Z" />
+    <path android:fillColor="#EDE6CF" android:pathData="M70.00,39.10a1.40,1.40 0 1,0 2.80,0a1.40,1.40 0 1,0 -2.80,0Z" />
+</vector>

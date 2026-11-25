@@ -1,0 +1,22 @@
+{
+  "name": "asbab-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Asbab: Amin's private proactive personal assistant (Android, Capacitor).",
+  "scripts": {
+    "vendor": "node scripts/copy-vendor.mjs",
+    "build": "npm run vendor && cap sync android",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "jsdom": "^31.0.1",
+    "vitest": "^5.1.2"
+  }
+}
