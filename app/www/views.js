@@ -38,7 +38,7 @@
     wrap.replaceChildren(
       h("div", { class: "salam" }, h("h1", {}, `${salam}, ${A.boot.settings.name}`), h("p", { class: "muted" }, `${t.now.hari}, ${t.now.date}${pt?.hijri ? " · " + pt.hijri : ""}`)),
       pt ? h("div", { class: "hero stack" }, bilal(pt), solatGrid(t))
-        : h("div", { class: "panel" }, "Waktu solat JAKIM dan Mod Bilal akan disambung dalam Fasa 2."),
+        : h("div", { class: "panel" }, `Waktu solat JAKIM (zon ${A.boot.settings.zone}) belum dapat diambil. Semak internet, atau semak kod zon dalam Tetapan > Profil.`),
       statGrid(t, all),
       weekCard(all, t.now.date));
     clearInterval(today.timer);
@@ -655,7 +655,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       tema: `${tm.asing ? "Wallpaper ikut bahagian" : (tm.wall.semua?.jenis === "gambar" ? "Gambar sendiri" : "Alam hidup")} · blur ${tm.blur}`,
       sambungan: `Claude ${A.boot.ai ? "bersambung" : "belum"} · GitHub ${A.boot.github ? "bersambung" : "belum"}`,
       otak: s.aiEnabled ? `Hidup · ${A.boot.usage.count}/${s.aiDailyCap} hari ini` : "Dimatikan (mod tanpa AI)",
-      suara: `Mod Bilal ${s.bilalLead} minit · taklimat ${s.briefTime}`,
+      suara: `Mod Bilal ${s.bilalLead} minit · taklimat ${s.briefTime} · senyap ${s.quietFrom}-${s.quietTo}`,
       personaliti: s.personality.slice(0, 60) + "…",
       akses: `${Object.values(s.access).filter(Boolean).length} daripada ${Object.keys(s.access).length} suis hidup`,
       butang: localStorage.getItem("asbab:moonOff") === "1" ? "Disembunyikan" : "Dipaparkan",
@@ -731,8 +731,9 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
         modelLight: String(f.get("modelLight") || "").trim() || s.modelLight, modelHeavy: String(f.get("modelHeavy") || "").trim() || s.modelHeavy,
       })),
 
-      suara: () => formOf([
+      suara: () => h("div", { class: "stack" }, reminderStatus(), formOf([
         field("Mod Bilal: ingatkan berapa minit sebelum waktu", "bilalLead", { type: "number", value: s.bilalLead }),
+        h("p", { class: "muted" }, "Mod Bilal dan pertanyaan \"Dah solat?\" tetap berbunyi semasa waktu senyap. Taklimat dan check-in tidak."),
         h("div", { class: "row" }, field("Taklimat pagi", "briefTime", { type: "time", value: s.briefTime }), field("Check-in petang", "checkinTime", { type: "time", value: s.checkinTime })),
         h("div", { class: "row" }, field("Waktu senyap dari", "quietFrom", { type: "time", value: s.quietFrom }), field("hingga", "quietTo", { type: "time", value: s.quietTo })),
         field("Maksimum check-in sehari", "maxProactive", { type: "number", value: s.maxProactive }),
@@ -741,7 +742,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
         bilalLead: Number(f.get("bilalLead")), briefTime: f.get("briefTime"), checkinTime: f.get("checkinTime"),
         quietFrom: f.get("quietFrom"), quietTo: f.get("quietTo"), maxProactive: Number(f.get("maxProactive")),
         priorities: f.get("priorities").split("\n").map((x) => x.trim()).filter(Boolean),
-      })),
+      }))),
 
       personaliti: () => formOf([
         h("p", { class: "muted" }, "Cara Asbab bercakap dan nilai yang dia pegang. Kekal sama walaupun model AI ditukar."),
@@ -840,6 +841,39 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
             ns.sound ? A.Ambient.start() : A.Ambient.stop();
             Object.assign(s, ns);
           } }, "Simpan")));
+    };
+    paint();
+    return box;
+  }
+
+  // Reminder health: notification permission, exact alarms, next alarm, test button, battery guidance.
+  function reminderStatus() {
+    const box = h("div", { class: "panel stack" }, h("h3", {}, "Status peringatan"), h("p", { class: "muted" }, "Menyemak…"));
+    const row = (ok, label, fix) => h("div", { class: "row" },
+      h("span", { class: `lampu${ok ? " ok" : ""}` }), h("span", { style: { flex: 1 } }, label), ok ? null : fix);
+    const paint = async () => {
+      const st = await Native.status();
+      if (st.browser) { box.replaceChildren(h("h3", {}, "Status peringatan"), h("p", { class: "muted" }, "Peringatan hanya berfungsi dalam app Android.")); return; }
+      const next = st.next && st.next.at ? `${st.next.atText}${st.next.title ? " · " + st.next.title : ""}` : "belum dijadualkan";
+      const res = h("p", { class: "muted", role: "status" });
+      box.replaceChildren(
+        h("h3", {}, "Status peringatan"),
+        row(st.notifications, st.notifications ? "Notifikasi dibenarkan" : "Notifikasi belum dibenarkan",
+          h("button", { class: "btn utama", onclick: async () => { if (!(await Native.requestNotifications())) Native.openSettings("notifications"); setTimeout(paint, 800); } }, "Benarkan")),
+        row(st.exactAlarms, st.exactAlarms ? "Alarm tepat dibenarkan" : "Alarm tepat belum dibenarkan (Mod Bilal mungkin lewat)",
+          h("button", { class: "btn", onclick: () => Native.openSettings("exactAlarm") }, "Buka tetapan")),
+        h("p", { class: "muted" }, `Peringatan seterusnya: ${next}`),
+        st.next && st.next.missingPrayer ? h("p", { class: "err" }, "Waktu solat belum dapat diambil daripada JAKIM. Asbab cuba lagi setiap jam bila ada internet.") : null,
+        h("div", { class: "row" },
+          h("button", { class: "btn", onclick: async () => { await Native.testBilal(10); res.textContent = "Notifikasi ujian akan muncul dalam 10 saat. Kau boleh tutup app untuk uji."; } }, "Cuba Mod Bilal"),
+          h("button", { class: "btn", onclick: () => Native.openSettings("battery") }, "Tetapan bateri")),
+        res,
+        h("details", {}, h("summary", {}, "Telefon Xiaomi, Oppo, Vivo atau Samsung?"),
+          h("p", { class: "muted" }, "Sesetengah jenama menutup app di latar belakang untuk jimat bateri, jadi peringatan boleh lewat. Buka Tetapan bateri dan pilih \"Tidak dioptimumkan\" atau \"Tiada sekatan\" untuk Asbab."),
+          h("p", { class: "muted" }, "Xiaomi: Tetapan > Apps > Asbab > Autostart (hidupkan) dan Penjimat bateri > Tiada sekatan."),
+          h("p", { class: "muted" }, "Oppo/Realme: Tetapan > Bateri > Asbab > Benarkan aktiviti latar belakang dan Auto-launch."),
+          h("p", { class: "muted" }, "Vivo: i Manager > Pengurus app > Autostart > Asbab, dan Bateri > Penggunaan kuasa latar belakang tinggi."),
+          h("p", { class: "muted" }, "Samsung: Tetapan > Penjagaan peranti > Bateri > Had penggunaan latar belakang > keluarkan Asbab daripada senarai app tidur.")));
     };
     paint();
     return box;

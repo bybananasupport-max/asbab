@@ -51,7 +51,10 @@ A.think = think;
 /* ---------- Start ---------- */
 async function start() {
   A.version = (await Native.appInfo()).version;
-  A.api = LocalApi.createLocalApi({ store: Store.createStore(localStorage), version: A.version });
+  A.api = LocalApi.createLocalApi({
+    store: await Native.openStore(), version: A.version,
+    prayerTimes: Native.prayerTimes, onChange: Native.reschedule,
+  });
   A.boot = await A.api("bootstrap");
   Theme.apply();
   document.body.classList.toggle("ringan", A.boot.settings.animations === "ringan");
@@ -59,8 +62,18 @@ async function start() {
   buildNav();
   buildMoon();
   refreshToday();
-  if (!location.hash) location.hash = "#/chat/utama";
+  const asked = await Native.takeRoute();
+  if (asked) location.hash = asked;
+  else if (!location.hash) location.hash = "#/chat/utama";
   else route();
+  Native.reschedule();
+  firstRunPermissions();
+  Native.onResume(async () => {
+    const r = await Native.takeRoute();
+    if (r && r !== location.hash) location.hash = r;
+    else poll();
+    Native.reschedule();
+  });
   setInterval(poll, 45000);
   setInterval(refreshToday, 5 * 60000);
   if (A.boot.settings.sound) Ambient.start();
@@ -221,20 +234,31 @@ function composer(roomId, onSend) {
 }
 
 function voiceButton(onText) {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return null;
-  let rec = null;
-  const btn = h("button", { class: "icon-btn", "aria-label": "Cakap guna suara", html: ICON.mic, onclick: () => {
-    if (rec) { rec.stop(); return; }
-    rec = new SR();
-    rec.lang = "ms-MY";
-    rec.interimResults = false;
-    rec.onresult = (e) => onText(e.results[0][0].transcript);
-    rec.onend = () => { rec = null; btn.classList.remove("rakam"); };
+  if (!Native.canListen) return null;
+  const btn = h("button", { class: "icon-btn", "aria-label": "Cakap guna suara", html: ICON.mic, onclick: async () => {
+    if (btn.classList.contains("rakam")) return;
     btn.classList.add("rakam");
-    rec.start();
+    buzz();
+    try {
+      const text = await Native.listen();
+      if (text) onText(text);
+    } catch (e) {
+      alert(e.message || "Suara tak dapat dikenal pasti.");
+    } finally {
+      btn.classList.remove("rakam");
+    }
   } });
   return btn;
+}
+
+// First launch on Android 13+: ask once for notification permission, explaining why.
+async function firstRunPermissions() {
+  if (!Native.isNative || localStorage.getItem("asbab:askedNotif")) return;
+  localStorage.setItem("asbab:askedNotif", "1");
+  const st = await Native.status();
+  if (st.notifications) return;
+  const ok = confirm("Asbab perlu kebenaran notifikasi untuk Mod Bilal, peringatan jadual dan taklimat pagi. Benarkan sekarang?");
+  if (ok) await Native.requestNotifications();
 }
 
 async function sendMessage(roomId, text, { allowAI = false, skipUser = false } = {}) {
