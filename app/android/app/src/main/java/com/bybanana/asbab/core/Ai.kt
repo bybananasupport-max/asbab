@@ -14,8 +14,28 @@ import org.json.JSONObject
  * matching entry to PROVIDERS in app/www/ai.js. Nothing else needs to change.
  */
 
-/** A provider error explained in Malay. limited = quota or rate limit (try the next provider). */
-data class AiError(val message: String, val status: Int, val limited: Boolean)
+/**
+ * A provider error explained in Malay. limited = quota, rate limit or timeout (try the next provider).
+ * detail = what the provider actually said (e.g. "HTTP 403 PERMISSION_DENIED: ..."), shown in the app.
+ */
+data class AiError(val message: String, val status: Int, val limited: Boolean, val detail: String = "")
+
+/** The provider's own words: HTTP status, error status/code and message (Google, OpenAI and Anthropic shapes). */
+fun rawDetail(status: Int, body: String): String {
+    val head = if (status > 0) "HTTP $status" else "Tiada jawapan HTTP"
+    if (body.isBlank()) return head
+    return try {
+        val e = JSONObject(body).opt("error")
+        when (e) {
+            is JSONObject -> listOf(head, e.optString("status").ifBlank { e.optString("type").ifBlank { e.optString("code") } })
+                .filter { it.isNotBlank() }.joinToString(" ") + ": " + e.optString("message").take(300)
+            is String -> "$head: ${e.take(300)}"
+            else -> "$head: ${body.take(300)}"
+        }
+    } catch (ex: Exception) {
+        "$head: ${body.replace(Regex("\\s+"), " ").take(300)}"
+    }
+}
 
 /** One HTTP request, built without touching the network. */
 data class HttpCall(val method: String, val url: String, val headers: Map<String, String>, val body: String?)
@@ -151,6 +171,13 @@ object GeminiSpec : ProviderSpec {
 
     private val SKIP = Regex("(image|tts|audio|live|embed|vision|aqa|learnlm|robotics|computer|native)", RegexOption.IGNORE_CASE)
 
+    /** Newest stable Flash-Lite model: the fastest, used when Flash is too slow. */
+    fun pickLite(models: List<String>): String? {
+        val lite = models.filter { it.contains("flash-lite") && !SKIP.containsMatchIn(it) }
+        return lite.filter { !it.contains("preview") && !it.contains("exp") }.sortedWith(newestFirst).firstOrNull()
+            ?: lite.sortedWith(newestFirst).firstOrNull()
+    }
+
     /** Newest stable "flash" model (not lite) for both roles: flash models are the ones usually on the free tier. */
     override fun pickDefault(models: List<String>, role: String): String? {
         val usable = models.filter { !SKIP.containsMatchIn(it) }
@@ -161,7 +188,9 @@ object GeminiSpec : ProviderSpec {
         return best(stable) ?: best(usable) ?: usable.sortedWith(newestFirst).firstOrNull()
     }
 
-    override fun error(status: Int, body: String): AiError {
+    override fun error(status: Int, body: String): AiError = geminiError(status, body).copy(detail = rawDetail(status, body))
+
+    private fun geminiError(status: Int, body: String): AiError {
         val msg = apiMessage(body)
         val m = (msg + body).lowercase()
         return when {
@@ -171,6 +200,8 @@ object GeminiSpec : ProviderSpec {
                 AiError("Gemini: kuota habis (tier percuma ada had sehari). Cuba lagi esok atau guna penyedia lain.", 429, true)
             m.contains("location") && m.contains("not supported") ->
                 AiError("Gemini: tak tersedia di lokasi ini.", status, false)
+            status == 403 && (m.contains("has not been used") || m.contains("disabled") || m.contains("service_disabled")) ->
+                AiError("Gemini: API belum dihidupkan untuk projek key ini. Buat key baharu di aistudio.google.com.", status, false)
             else -> genericError(label, status, msg)
         }
     }
@@ -235,7 +266,9 @@ object ClaudeSpec : ProviderSpec {
             ?: models.sortedWith(newestFirst).firstOrNull()
     }
 
-    override fun error(status: Int, body: String): AiError {
+    override fun error(status: Int, body: String): AiError = claudeError(status, body).copy(detail = rawDetail(status, body))
+
+    private fun claudeError(status: Int, body: String): AiError {
         val msg = apiMessage(body)
         val m = msg.lowercase()
         return when {
@@ -306,7 +339,9 @@ object OpenAiSpec : ProviderSpec {
         return pick.sortedWith(newestFirst).firstOrNull()
     }
 
-    override fun error(status: Int, body: String): AiError {
+    override fun error(status: Int, body: String): AiError = openAiError(status, body).copy(detail = rawDetail(status, body))
+
+    private fun openAiError(status: Int, body: String): AiError {
         val msg = apiMessage(body)
         val m = (msg + body).lowercase()
         return when {

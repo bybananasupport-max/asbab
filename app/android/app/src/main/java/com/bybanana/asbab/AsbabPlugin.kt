@@ -246,39 +246,70 @@ class AsbabPlugin : Plugin() {
 
     /* ---------- Phase 5.1: several AI providers (Gemini, Claude, OpenAI) ---------- */
 
-    /** Models this key can use, plus the ones Asbab would pick for Chat and Coding. */
+    private fun errObj(e: AiError) = JSObject().put("ok", false).put("detail", e.message).put("raw", e.detail)
+
+    /**
+     * Models this key can use, plus the ones Asbab would pick for Chat and Coding (and the fastest "lite" one).
+     * Always resolves: {ok, models, chat, coding, lite} or {ok:false, detail, raw}, so the screen never waits forever.
+     */
     @PluginMethod
     fun aiListModels(call: PluginCall) {
         val spec = com.bybanana.asbab.core.Providers.byId(call.getString("provider") ?: "") ?: return call.reject("Penyedia tak dikenali")
-        val key = SecretStore.get(context, spec.id) ?: return call.reject("${spec.label}: key belum disimpan.")
+        val key = SecretStore.get(context, spec.id) ?: return call.resolve(JSObject().put("ok", false).put("detail", "${spec.label}: key belum disimpan.").put("raw", ""))
         net.execute {
             try {
                 val models = AiClient.listModels(spec, key).distinct().sorted()
                 call.resolve(JSObject().apply {
+                    put("ok", true)
                     put("models", JSArray().apply { models.forEach { put(it) } })
                     put("chat", spec.pickDefault(models, "chat"))
                     put("coding", spec.pickDefault(models, "coding"))
+                    if (spec is com.bybanana.asbab.core.GeminiSpec) put("lite", spec.pickLite(models))
                 })
             } catch (e: AiFailure) {
-                call.reject(e.error.message)
+                call.resolve(errObj(e.error))
+            } catch (e: Throwable) {
+                call.resolve(errObj(AiClient.network(spec, e, AiClient.LIST_MS).error))
             }
         }
     }
 
-    /** "Uji sambungan": a tiny request to the chosen model. */
+    /**
+     * "Uji sambungan": a tiny request to the chosen model (short time limit). For Gemini, if that model is too
+     * slow (timeout), Asbab tries the newest Flash-Lite model and reports it as {switchTo}.
+     */
     @PluginMethod
     fun aiTest(call: PluginCall) {
         val spec = com.bybanana.asbab.core.Providers.byId(call.getString("provider") ?: "") ?: return call.reject("Penyedia tak dikenali")
-        val key = SecretStore.get(context, spec.id) ?: return call.resolve(JSObject().put("ok", false).put("detail", "Key ${spec.label} belum disimpan."))
+        val key = SecretStore.get(context, spec.id) ?: return call.resolve(JSObject().put("ok", false).put("detail", "Key ${spec.label} belum disimpan.").put("raw", ""))
         val model = call.getString("model").orEmpty()
-        if (model.isBlank()) return call.resolve(JSObject().put("ok", false).put("detail", "Pilih model dulu (tekan \"Muat senarai model\")."))
+        if (model.isBlank()) return call.resolve(JSObject().put("ok", false).put("detail", "Pilih model dulu (tekan \"Muat senarai model\").").put("raw", ""))
         net.execute {
+            val started = System.currentTimeMillis()
+            fun ping(m: String) = AiClient.complete(spec, key, m, "Balas dengan satu perkataan sahaja.", "Balas: ok", 256, AiClient.TEST_MS)
             try {
-                AiClient.complete(spec, key, model, "Balas dengan satu perkataan sahaja.", "Balas: ok", 64)
+                ping(model)
                 Repo(context).bumpUsage(spec.id)
-                call.resolve(JSObject().put("ok", true).put("detail", "Bersambung (model $model)."))
-            } catch (e: AiFailure) {
-                call.resolve(JSObject().put("ok", false).put("detail", e.error.message))
+                call.resolve(JSObject().put("ok", true).put("detail", "Bersambung (model $model, ${(System.currentTimeMillis() - started) / 100 / 10.0} saat)."))
+            } catch (e: Throwable) {
+                val err = (e as? AiFailure)?.error ?: AiClient.network(spec, e, AiClient.TEST_MS).error
+                val timedOut = err.detail.startsWith("SocketTimeoutException")
+                if (timedOut && spec is com.bybanana.asbab.core.GeminiSpec) {
+                    val lite = try { spec.pickLite(AiClient.listModels(spec, key)) } catch (x: Throwable) { null }
+                    if (lite != null && lite != model) {
+                        try {
+                            ping(lite)
+                            Repo(context).bumpUsage(spec.id)
+                            return@execute call.resolve(JSObject().put("ok", true).put("switchTo", lite)
+                                .put("detail", "$model terlalu perlahan (tiada jawapan dalam ${AiClient.TEST_MS / 1000} saat). $lite berjaya, jadi model Chat ditukar ke $lite.")
+                                .put("raw", err.detail))
+                        } catch (x: Throwable) {
+                            val e2 = (x as? AiFailure)?.error ?: AiClient.network(spec, x, AiClient.TEST_MS).error
+                            return@execute call.resolve(errObj(err.copy(message = "${err.message} Cubaan dengan $lite juga gagal: ${e2.message}", detail = "${err.detail} | $lite: ${e2.detail}")))
+                        }
+                    }
+                }
+                call.resolve(errObj(err))
             }
         }
     }
@@ -306,6 +337,8 @@ class AsbabPlugin : Plugin() {
                 })
             } catch (e: AiFailure) {
                 call.reject(e.error.message)
+            } catch (e: Throwable) {
+                call.reject("Otak kedua: ralat tak dijangka [${e.javaClass.simpleName}: ${e.message ?: ""}]")
             }
         }
     }

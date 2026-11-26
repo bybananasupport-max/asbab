@@ -833,31 +833,52 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
     const providerCard = (p, keys, usage) => {
       const c = cfg.providers[p.id];
       const res = h("p", { class: "muted", role: "status" });
+      const raw = h("p", { class: "muted", style: { fontSize: ".8rem", wordBreak: "break-word" } });
       const lamp = lampOf(keys[p.id] && c.on);
-      const say = (ok, text) => { res.className = ok ? "ok-teks" : "err"; res.textContent = text; lamp.classList.toggle("ok", !!ok); lamp.classList.toggle("merah", !ok); };
+      // detail = what the provider itself said (e.g. Google's error), so Amin can see the real cause.
+      const say = (ok, text, detail = "") => {
+        res.className = ok ? "ok-teks" : "err"; res.textContent = text;
+        raw.textContent = detail ? `Mesej daripada ${p.label}: ${detail}` : "";
+        lamp.classList.toggle("ok", !!ok); lamp.classList.toggle("merah", !ok);
+      };
+      const busy = (text) => {
+        res.className = "muted"; raw.textContent = "";
+        const t0 = Date.now();
+        res.textContent = text;
+        const tick = setInterval(() => { if (!res.isConnected || !res.textContent.startsWith(text)) return clearInterval(tick); res.textContent = `${text} ${Math.round((Date.now() - t0) / 1000)} saat`; }, 1000);
+        return () => clearInterval(tick);
+      };
       const keyIn = h("input", { type: "password", autocomplete: "off", placeholder: keys[p.id] ? "•••••••• (disimpan). Tampal baharu untuk tukar" : p.keyHint, "aria-label": `Key ${p.label}` });
       const opt = (v, cur) => h("option", { value: v, selected: v === cur }, v || "(pilih model)");
       const chatSel = h("select", { "aria-label": `Model Chat ${p.label}`, onchange: async () => { c.chatModel = chatSel.value; await persist(); } }, opt(c.chatModel, c.chatModel));
       const codeSel = h("select", { "aria-label": `Model Coding ${p.label}`, onchange: async () => { c.codingModel = codeSel.value; await persist(); } }, opt(c.codingModel, c.codingModel));
       const loadModels = async (auto) => {
-        res.className = "muted"; res.textContent = "Memuat senarai model…";
-        try {
-          const r = await Native.aiListModels(p.id);
-          if (auto || !c.chatModel) c.chatModel = r.chat || c.chatModel;
-          if (auto || !c.codingModel) c.codingModel = r.coding || c.codingModel;
-          const list = [...new Set([...(r.models || []), c.chatModel, c.codingModel].filter(Boolean))];
-          chatSel.replaceChildren(...list.map((m) => opt(m, c.chatModel)));
-          codeSel.replaceChildren(...list.map((m) => opt(m, c.codingModel)));
-          await persist();
-          res.className = "muted"; res.textContent = `${list.length} model tersedia. Dipilih: Chat ${c.chatModel || "-"}, Coding ${c.codingModel || "-"}.`;
-          return true;
-        } catch (e) { say(false, e.message); return false; }
+        const stop = busy("Memuat senarai model…");
+        const r = await Native.aiListModels(p.id);
+        stop();
+        if (!r.ok) { say(false, `Gagal memuat senarai model: ${r.detail}`, r.raw); return false; }
+        if (auto || !c.chatModel) c.chatModel = r.chat || c.chatModel;
+        if (auto || !c.codingModel) c.codingModel = r.coding || c.codingModel;
+        const list = [...new Set([...(r.models || []), c.chatModel, c.codingModel].filter(Boolean))];
+        chatSel.replaceChildren(...list.map((m) => opt(m, c.chatModel)));
+        codeSel.replaceChildren(...list.map((m) => opt(m, c.codingModel)));
+        await persist();
+        res.className = "muted";
+        res.textContent = `${list.length} model tersedia. Dipilih: Chat ${c.chatModel || "-"}, Coding ${c.codingModel || "-"}.${r.lite ? ` Paling laju: ${r.lite}.` : ""}`;
+        return true;
       };
       const test = async () => {
-        res.className = "muted"; res.textContent = "Menguji…";
         if (!c.chatModel && !(await loadModels(true))) return;
+        const stop = busy(`Menguji ${c.chatModel}…`);
         const r = await Native.aiTest(p.id, c.chatModel);
-        say(r.ok, (r.ok ? "Berjaya: " : "Gagal: ") + r.detail);
+        stop();
+        if (r.ok && r.switchTo) {
+          c.chatModel = r.switchTo;
+          if (![...chatSel.options].some((o) => o.value === r.switchTo)) chatSel.append(opt(r.switchTo, r.switchTo));
+          chatSel.value = r.switchTo;
+          await persist();
+        }
+        say(r.ok, (r.ok ? "Berjaya: " : "Gagal: ") + r.detail, r.ok && !r.switchTo ? "" : r.raw);
       };
       return h("div", { class: "panel stack" },
         h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, lamp, p.label),
@@ -894,7 +915,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
             c.personal = e.target.checked; await persist();
           } })),
         p.privacy ? h("p", { class: "muted" }, `⚠️ ${p.privacy}`) : null,
-        res);
+        res, raw);
     };
 
     const rolesCard = () => {

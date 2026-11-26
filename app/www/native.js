@@ -161,8 +161,14 @@
       sub.remove();
     }
   }
-  const aiListModels = (provider) => (Asbab ? Asbab.aiListModels({ provider }) : Promise.reject(new Error("Hanya dalam app Android.")));
-  const aiTest = (provider, model) => (Asbab ? Asbab.aiTest({ provider, model }) : Promise.resolve({ ok: false, detail: "Hanya dalam app Android." }));
+  // Never let the screen wait forever: if the phone side does not answer in time, say so.
+  const withLimit = (promise, ms) => Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve({ ok: false, detail: `Tiada jawapan dalam ${ms / 1000} saat.`, raw: "Had masa di skrin (bahagian Android tak membalas)." }), ms)),
+  ]);
+  // Both resolve {ok, ...} or {ok:false, detail (Malay), raw (the provider's own message)}.
+  const aiListModels = (provider) => (Asbab ? withLimit(Asbab.aiListModels({ provider }), 40000) : Promise.resolve({ ok: false, detail: "Hanya dalam app Android.", raw: "" }));
+  const aiTest = (provider, model) => (Asbab ? withLimit(Asbab.aiTest({ provider, model }), 90000) : Promise.resolve({ ok: false, detail: "Hanya dalam app Android.", raw: "" }));
   const aiUsage = async () => (Asbab ? Asbab.aiUsage() : { count: 0, by: {} });
 
   const accessStatus = async () => (Asbab ? Asbab.accessStatus() : { browser: true });

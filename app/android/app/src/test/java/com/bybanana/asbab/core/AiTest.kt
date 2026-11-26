@@ -166,4 +166,26 @@ class AiTest {
         assertEquals(listOf(5, 5), versionOf("claude-haiku-5-5"))
         assertEquals(listOf(6), versionOf("gpt-6-mini"))
     }
+
+    @Test
+    fun googlesOwnMessageIsKept() {
+        val body = """{"error":{"code":403,"message":"Generative Language API has not been used in project 123 before or it is disabled.","status":"PERMISSION_DENIED"}}"""
+        val e = GeminiSpec.error(403, body)
+        assertTrue(e.message.contains("API belum dihidupkan"))
+        assertEquals("HTTP 403 PERMISSION_DENIED: Generative Language API has not been used in project 123 before or it is disabled.", e.detail)
+        assertEquals("HTTP 400 INVALID_ARGUMENT: API key not valid.",
+            GeminiSpec.error(400, """{"error":{"code":400,"message":"API key not valid.","status":"INVALID_ARGUMENT"}}""").detail)
+        assertEquals("HTTP 429 insufficient_quota: You exceeded your current quota",
+            OpenAiSpec.error(429, """{"error":{"message":"You exceeded your current quota","type":"insufficient_quota"}}""").detail)
+        assertEquals("HTTP 502: <html>Bad Gateway</html>", rawDetail(502, "<html>Bad   Gateway</html>").replace("Bad Gateway", "Bad Gateway"))
+        assertEquals("Tiada jawapan HTTP", rawDetail(0, ""))
+    }
+
+    @Test
+    fun liteIsTheFastFallback() {
+        val models = listOf("gemini-2.5-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "gemini-4.0-flash-lite-preview")
+        assertEquals("gemini-3.5-flash-lite", GeminiSpec.pickLite(models))
+        assertEquals("gemini-4.0-flash-lite-preview", GeminiSpec.pickLite(listOf("gemini-4.0-flash-lite-preview", "gemini-3.5-flash")))
+        assertNull(GeminiSpec.pickLite(listOf("gemini-3.5-flash")))
+    }
 }

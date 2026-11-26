@@ -15,10 +15,16 @@ class AiFailure(val error: AiError) : Exception(error.message)
 
 /** Network side of a provider: sends the requests that core/Ai.kt describes. */
 object AiClient {
+    /** Time limits (ms). Short for listing models and "Uji sambungan", longer for real answers. */
+    const val CONNECT_MS = 10_000
+    const val LIST_MS = 20_000
+    const val TEST_MS = 25_000
+    const val ANSWER_MS = 90_000
+
     private fun open(call: HttpCall, readTimeoutMs: Int): HttpURLConnection =
         (URL(call.url).openConnection() as HttpURLConnection).apply {
             requestMethod = call.method
-            connectTimeout = 15_000
+            connectTimeout = CONNECT_MS
             readTimeout = readTimeoutMs
             for ((k, v) in call.headers) setRequestProperty(k, v)
             if (call.body != null) doOutput = true
@@ -30,60 +36,81 @@ object AiClient {
         throw AiFailure(spec.error(status, raw))
     }
 
-    private fun offline(spec: ProviderSpec) = AiFailure(spec.error(0, ""))
-
-    fun complete(spec: ProviderSpec, key: String, model: String, system: String, prompt: String, maxTokens: Int): String {
-        val call = spec.generate(key, model, system, prompt, maxTokens, false)
-        val c = try { open(call, 90_000) } catch (e: IOException) { throw offline(spec) }
-        try {
-            call.body?.let { b -> c.outputStream.use { it.write(b.toByteArray()) } }
-            if (c.responseCode !in 200..299) fail(spec, c)
-            return spec.completeText(c.inputStream.bufferedReader().readText())
-        } catch (e: IOException) {
-            throw offline(spec)
-        } finally {
-            c.disconnect()
-        }
+    /** Turns a network exception into a plain-Malay error that still shows what really happened. */
+    fun network(spec: ProviderSpec, e: Throwable, timeoutMs: Int): AiFailure {
+        val detail = "${e.javaClass.simpleName}: ${e.message ?: ""}".take(300)
+        return AiFailure(when (e) {
+            is java.net.SocketTimeoutException ->
+                AiError("${spec.label}: tiada jawapan dalam ${timeoutMs / 1000} saat (timeout). Model mungkin terlalu perlahan atau internet lemah.", 0, true, detail)
+            is java.net.UnknownHostException ->
+                AiError("${spec.label}: alamat pelayan tak dijumpai. Semak internet atau DNS telefon.", 0, true, detail)
+            is javax.net.ssl.SSLException ->
+                AiError("${spec.label}: sambungan selamat (SSL) gagal. Semak tarikh dan masa telefon, atau rangkaian Wi-Fi.", 0, true, detail)
+            is IOException -> spec.error(0, "").copy(detail = detail)
+            else -> AiError("${spec.label}: ralat tak dijangka.", 0, true, detail)
+        })
     }
+
+    private inline fun <T> guarded(spec: ProviderSpec, timeoutMs: Int, block: () -> T): T = try {
+        block()
+    } catch (e: AiFailure) {
+        throw e
+    } catch (e: Exception) {
+        throw network(spec, e, timeoutMs)
+    }
+
+    fun complete(spec: ProviderSpec, key: String, model: String, system: String, prompt: String, maxTokens: Int, timeoutMs: Int = ANSWER_MS): String =
+        guarded(spec, timeoutMs) {
+            val call = spec.generate(key, model, system, prompt, maxTokens, false)
+            val c = open(call, timeoutMs)
+            try {
+                call.body?.let { b -> c.outputStream.use { it.write(b.toByteArray()) } }
+                if (c.responseCode !in 200..299) fail(spec, c)
+                spec.completeText(c.inputStream.bufferedReader().readText())
+            } finally {
+                c.disconnect()
+            }
+        }
 
     /** Streams an answer; [onText] gets the text so far. A broken stream after some text returns that text. */
     fun stream(spec: ProviderSpec, key: String, model: String, system: String, prompt: String, maxTokens: Int, onText: (String) -> Unit): String {
-        val call = spec.generate(key, model, system, prompt, maxTokens, true)
-        val c = try { open(call, 120_000) } catch (e: IOException) { throw offline(spec) }
         val out = StringBuilder()
-        try {
-            call.body?.let { b -> c.outputStream.use { it.write(b.toByteArray()) } }
-            if (c.responseCode !in 200..299) fail(spec, c)
-            var last = 0L
-            c.inputStream.bufferedReader().useLines { lines ->
-                for (line in lines) {
-                    spec.streamError(line)?.let { if (out.isEmpty()) throw AiFailure(it) }
-                    val piece = spec.streamText(line) ?: break
-                    if (piece.isEmpty()) continue
-                    out.append(piece)
-                    val now = System.currentTimeMillis()
-                    if (now - last > 60) { onText(out.toString()); last = now }
+        return try {
+            guarded(spec, ANSWER_MS) {
+                val call = spec.generate(key, model, system, prompt, maxTokens, true)
+                val c = open(call, ANSWER_MS)
+                try {
+                    call.body?.let { b -> c.outputStream.use { it.write(b.toByteArray()) } }
+                    if (c.responseCode !in 200..299) fail(spec, c)
+                    var last = 0L
+                    c.inputStream.bufferedReader().useLines { lines ->
+                        for (line in lines) {
+                            spec.streamError(line)?.let { if (out.isEmpty()) throw AiFailure(it) }
+                            val piece = spec.streamText(line) ?: break
+                            if (piece.isEmpty()) continue
+                            out.append(piece)
+                            val now = System.currentTimeMillis()
+                            if (now - last > 60) { onText(out.toString()); last = now }
+                        }
+                    }
+                    onText(out.toString())
+                    if (out.isEmpty()) throw AiFailure(AiError("${spec.label}: jawapan kosong.", 200, true, "Pelayan membalas tanpa teks."))
+                    out.toString()
+                } finally {
+                    c.disconnect()
                 }
             }
-            onText(out.toString())
-            if (out.isEmpty()) throw AiFailure(AiError("${spec.label}: jawapan kosong.", 200, true))
-            return out.toString()
-        } catch (e: IOException) {
-            if (out.isNotEmpty()) return out.toString()
-            throw offline(spec)
-        } finally {
-            c.disconnect()
+        } catch (e: AiFailure) {
+            if (out.isNotEmpty() && e.error.status == 0) out.toString() else throw e
         }
     }
 
-    fun listModels(spec: ProviderSpec, key: String): List<String> {
+    fun listModels(spec: ProviderSpec, key: String): List<String> = guarded(spec, LIST_MS) {
         val call = spec.listModels(key)
-        val c = try { open(call, 30_000) } catch (e: IOException) { throw offline(spec) }
+        val c = open(call, LIST_MS)
         try {
             if (c.responseCode !in 200..299) fail(spec, c)
-            return spec.parseModels(c.inputStream.bufferedReader().readText())
-        } catch (e: IOException) {
-            throw offline(spec)
+            spec.parseModels(c.inputStream.bufferedReader().readText())
         } finally {
             c.disconnect()
         }
@@ -130,9 +157,9 @@ object AiRouter {
                 repo.bumpUsage(id)
                 return Answer(text, id, spec.label, model, i > 0, failures)
             } catch (e: AiFailure) {
-                failures += e.error.message
+                failures += e.error.message + if (e.error.detail.isNotBlank()) " [${e.error.detail}]" else ""
             } catch (e: Exception) {
-                failures += "${spec.label}: ${e.message ?: "ralat"}"
+                failures += "${spec.label}: ralat tak dijangka [${e.javaClass.simpleName}: ${e.message ?: ""}]"
             }
         }
         throw AiFailure(AiError(allFailedMessage(failures), 0, true))
