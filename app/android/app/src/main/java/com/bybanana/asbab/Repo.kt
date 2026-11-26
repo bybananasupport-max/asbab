@@ -45,9 +45,9 @@ class Repo(context: Context) {
     }
 
     /** Adds a message that Asbab starts itself to the pinned main room "Asbab", and marks it unread. */
-    fun addProactiveMessage(text: String) {
+    fun addProactiveMessage(text: String, roomId: String = "utama", roomName: String = "Asbab") {
         val now = System.currentTimeMillis()
-        db.update("msgs:utama") { raw ->
+        db.update("msgs:$roomId") { raw ->
             val list = try { JSONArray(raw ?: "[]") } catch (e: Exception) { JSONArray() }
             list.put(JSONObject().apply {
                 put("id", java.lang.Long.toString(now, 36) + (100..999).random())
@@ -66,7 +66,7 @@ class Repo(context: Context) {
             var found = false
             for (i in 0 until rooms.length()) {
                 val r = rooms.optJSONObject(i) ?: continue
-                if (r.optString("id") == "utama") {
+                if (r.optString("id") == roomId) {
                     r.put("unread", r.optInt("unread", 0) + 1)
                     r.put("updatedAt", now)
                     found = true
@@ -74,7 +74,7 @@ class Repo(context: Context) {
             }
             if (!found) {
                 val main = JSONObject().apply {
-                    put("id", "utama"); put("name", "Asbab"); put("pinned", true); put("scene", "kampung")
+                    put("id", roomId); put("name", roomName); put("pinned", roomId == "utama"); put("scene", "kampung")
                     put("createdAt", now); put("updatedAt", now); put("unread", 1)
                 }
                 val out = JSONArray().put(main)

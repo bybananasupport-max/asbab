@@ -29,7 +29,7 @@ web-reference/          versi web lama. Rujukan sahaja, jangan deploy.
 | 2 | Ciri tempatan tanpa AI: otak sendiri, waktu solat JAKIM, Mod Bilal, peringatan, suara | siap |
 | 3 | Otak kedua (Claude), akses telefon (notifikasi, skrin, penggunaan app), Jeda Asbab | PR |
 | 4 | Butang bulan terapung di atas app lain | PR |
-| 5 | Medan Graviti project, project kod GitHub, pantau website, backup | belum |
+| 5 | Medan Graviti project, project kod GitHub, pantau website, backup | PR |
 
 ## Cara dapatkan dan pasang APK
 
@@ -86,6 +86,10 @@ cd android && ./gradlew assembleDebug   # perlu Android SDK
 ```
 
 UI juga boleh dibuka dalam browser untuk semakan pantas: `cd app && npm run vendor && python3 -m http.server -d www 8000`.
+
+## Key, token dan kebenaran
+
+Langkah terperinci untuk key Claude, token GitHub, repo backup dan kebenaran Android ada dalam [PANDUAN.md](PANDUAN.md).
 
 ## Prinsip yang tak boleh berubah
 

@@ -55,8 +55,8 @@ async function start() {
   A.version = (await Native.appInfo()).version;
   A.api = LocalApi.createLocalApi({
     store: await Native.openStore(), version: A.version,
-    prayerTimes: Native.prayerTimes, onChange: () => { Native.reschedule(); Native.serviceSync(); },
-    secrets: Native.secretStatus,
+    prayerTimes: Native.prayerTimes, onChange: () => { Native.reschedule(); Native.serviceSync(); Native.workSync(); },
+    secrets: Native.secretStatus, githubRequest: Native.github,
   });
   A.boot = await A.api("bootstrap");
   Theme.apply();
@@ -72,6 +72,7 @@ async function start() {
   if (asked.text) setTimeout(() => sendMessage("utama", asked.text), 700);
   Native.reschedule();
   Native.serviceSync();
+  Native.workSync();
   firstRunPermissions();
   Native.onResume(async () => {
     const r = await Native.takeRoute();

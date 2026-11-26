@@ -61,6 +61,8 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Phase 5: website monitoring every 15 minutes and the daily backup
+    implementation "androidx.work:work-runtime:2.10.0"
     testImplementation "junit:junit:$junitVersion"
     // Real org.json for JVM unit tests (Android's built-in copy only exists on a phone).
     testImplementation "org.json:json:20240303"
