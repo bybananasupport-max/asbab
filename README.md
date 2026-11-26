@@ -87,6 +87,10 @@ cd android && ./gradlew assembleDebug   # perlu Android SDK
 
 UI juga boleh dibuka dalam browser untuk semakan pantas: `cd app && npm run vendor && python3 -m http.server -d www 8000`.
 
+## Key, token dan kebenaran
+
+Langkah terperinci untuk key Claude, token GitHub, repo backup dan kebenaran Android ada dalam [PANDUAN.md](PANDUAN.md).
+
 ## Prinsip yang tak boleh berubah
 
 1. **Satu identiti.** Amin hanya bercakap dengan Asbab. Claude ialah otak kedua di belakang tabir.
