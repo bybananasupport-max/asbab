@@ -66,16 +66,18 @@ async function start() {
   buildMoon();
   refreshToday();
   const asked = await Native.takeRoute();
-  if (asked) location.hash = asked;
+  if (asked.route) location.hash = asked.route;
   else if (!location.hash) location.hash = "#/chat/utama";
   else route();
+  if (asked.text) setTimeout(() => sendMessage("utama", asked.text), 700);
   Native.reschedule();
   Native.serviceSync();
   firstRunPermissions();
   Native.onResume(async () => {
     const r = await Native.takeRoute();
-    if (r && r !== location.hash) location.hash = r;
+    if (r.route && r.route !== location.hash) location.hash = r.route;
     else poll();
+    if (r.text) setTimeout(() => sendMessage("utama", r.text), 700);
     Native.reschedule();
   });
   setInterval(poll, 45000);
@@ -119,6 +121,7 @@ function route() {
   const [, page, id] = location.hash.replace(/^#/, "").split("/");
   const navId = { chat: "chat", "hari-ini": "hari", project: "project", catatan: "catatan", tetapan: "tetapan" }[page] || "chat";
   document.querySelectorAll("nav.bar a").forEach((a) => a.classList.toggle("aktif", a.dataset.id === navId));
+  Native.rememberRoute(location.hash);
   const section = { chat: "chat", "hari-ini": "hari", project: "project", catatan: "catatan" }[page] || "semua";
   const alam = Theme.apply(section);
   Scene.sky(alam && page === "project");

@@ -7,6 +7,10 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     public static final String EXTRA_ROUTE = "asbab.route";
+    public static final String EXTRA_VOICE = "asbab.voice";
+
+    /** Words spoken to the moon button's voice command, sent to the main chat by the web UI. */
+    public static volatile String pendingVoice = null;
 
     /** Page a tapped notification wants to open; the web UI collects it through AsbabNative.takeRoute(). */
     public static volatile String pendingRoute = null;
@@ -25,10 +29,27 @@ public class MainActivity extends BridgeActivity {
         keepRoute(intent);
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        Overlay.setAppVisible(this, true);
+    }
+
+    @Override
+    public void onPause() {
+        Overlay.setAppVisible(this, false);
+        super.onPause();
+    }
+
     private void keepRoute(Intent intent) {
-        if (intent != null && intent.hasExtra(EXTRA_ROUTE)) {
+        if (intent == null) return;
+        if (intent.hasExtra(EXTRA_ROUTE)) {
             pendingRoute = intent.getStringExtra(EXTRA_ROUTE);
             intent.removeExtra(EXTRA_ROUTE);
+        }
+        if (intent.hasExtra(EXTRA_VOICE)) {
+            pendingVoice = intent.getStringExtra(EXTRA_VOICE);
+            intent.removeExtra(EXTRA_VOICE);
         }
     }
 }

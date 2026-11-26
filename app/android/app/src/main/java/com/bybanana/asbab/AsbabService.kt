@@ -104,8 +104,8 @@ class AsbabService : Service() {
     }
 }
 
-/** Extension points for later phases (the floating moon button attaches here in Phase 4). */
+/** What the service also looks after: the floating moon button (Phase 4). */
 object Hooks {
-    fun onServiceRefresh(context: Context) {}
-    fun onServiceStop(context: Context) {}
+    fun onServiceRefresh(context: Context) = Overlay.sync(context)
+    fun onServiceStop(context: Context) = Overlay.remove()
 }

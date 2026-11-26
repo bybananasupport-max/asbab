@@ -642,7 +642,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
     ["suara", "🔔", "Bila Asbab Bersuara", "bilal solat taklimat pagi check-in petang waktu senyap keutamaan"],
     ["personaliti", "💬", "Personaliti", "personaliti cara bercakap nilai"],
     ["akses", "📱", "Akses Telefon", "toggle suis whatsapp email sms bank skrin fail senarai blok simpan"],
-    ["butang", "🌙", "Butang Terapung", "butang bulan jalur kedudukan"],
+    ["butang", "🌙", "Butang Terapung", "butang bulan jalur kedudukan terapung kamera lampu kunci"],
     ["data", "💾", "Data & Backup", "backup eksport pulih identiti"],
     ["keselamatan", "🔒", "Keselamatan", "cap jari pin kunci"],
     ["tentang", "ℹ️", "Tentang Asbab", "versi update kemas kini log perkembangan"],
@@ -658,7 +658,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       suara: `Mod Bilal ${s.bilalLead} minit · taklimat ${s.briefTime} · senyap ${s.quietFrom}-${s.quietTo}`,
       personaliti: s.personality.slice(0, 60) + "…",
       akses: `${["whatsapp", "email", "sms_bank", "skrin", "penggunaan_app"].filter((k) => s.access[k]).length} daripada 5 suis hidup`,
-      butang: localStorage.getItem("asbab:moonOff") === "1" ? "Disembunyikan" : "Dipaparkan",
+      butang: s.bubble ? "Terapung di atas app lain" : "Dalam Asbab sahaja",
       data: "Backup identiti dan pulihkan",
       keselamatan: "Kunci cap jari/PIN: akan datang",
       tentang: `Versi ${A.boot.version}`,
@@ -745,16 +745,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
 
       akses: () => aksesPage(s, save),
 
-      butang: () => {
-        const off = localStorage.getItem("asbab:moonOff") === "1";
-        return h("div", { class: "panel stack" },
-          h("label", { class: "toggle" }, h("span", {}, "Paparkan butang bulan"), h("input", { type: "checkbox", checked: !off, onchange: (e) => {
-            localStorage.setItem("asbab:moonOff", e.target.checked ? "0" : "1");
-            const m = $("#moonbtn"); if (m) m.style.display = e.target.checked ? "" : "none";
-          } })),
-          h("p", { class: "muted" }, "Tekan butang bulan untuk buka jalur menu. Seret ke bawah skrin untuk tidurkan. Butang bulan di atas app lain datang dalam Fasa 4."),
-          h("button", { class: "btn", onclick: () => { localStorage.removeItem("asbab:moon"); location.reload(); } }, "Kembalikan ke kedudukan asal"));
-      },
+      butang: () => butangPage(s, save),
 
       data: () => h("div", { class: "panel stack" },
         h("p", { class: "muted" }, "Semua nota, chat, tetapan dan personaliti Asbab dalam satu fail. Backup automatik yang disulitkan ke repo GitHub peribadi datang dalam Fasa 5."),
@@ -875,6 +866,67 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
             } }, "Padam") : null),
           res);
       }), h("p", { class: "muted" }, "Key disimpan dalam telefon ini sahaja, disulitkan dengan Android Keystore. Ia tak pernah dipaparkan semula, tak masuk ke backup, dan tak masuk ke repo."));
+    };
+    paint();
+    return box;
+  }
+
+  /* ---------- Butang Terapung (Phase 4) ---------- */
+  const RAIL_ITEMS = [
+    ["tutup", "Tutup (sentiasa ada)"], ["suara", "Arahan suara"], ["chat", "Chat"], ["hari", "Hari Ini"], ["project", "Project"],
+    ["catatan", "Catatan"], ["pemisah", "Garis pemisah"], ["projek", "3 project terkini (titik warna)"], ["cincin", "Cincin penggunaan otak kedua"],
+    ["tetapan", "Profil / Tetapan"], ["kamera", "Kamera"], ["lampu", "Lampu suluh"], ["kunci", "Kunci skrin"],
+  ];
+  function railOrder(saved) {
+    const seen = new Map();
+    for (const it of saved || []) if (RAIL_ITEMS.some(([id]) => id === it.id) && !seen.has(it.id)) seen.set(it.id, it.on !== false);
+    for (const [id] of RAIL_ITEMS) if (!seen.has(id)) seen.set(id, true);
+    seen.set("tutup", true);
+    return [...seen].map(([id, on]) => ({ id, on }));
+  }
+
+  function butangPage(s, save) {
+    const box = h("div", { class: "stack" });
+    let items = railOrder(s.bubbleItems);
+    const label = (id) => RAIL_ITEMS.find((x) => x[0] === id)[1];
+    const paint = async () => {
+      const st = await Native.accessStatus();
+      const cur = A.boot.settings;
+      const res = h("p", { class: "muted", role: "status" });
+      const list = h("div", { class: "stack" }, ...items.map((it, i) => h("div", { class: "row" },
+        h("label", { class: "toggle", style: { flex: 1 } }, h("span", {}, label(it.id)),
+          h("input", { type: "checkbox", checked: it.on, disabled: it.id === "tutup", onchange: (e) => { it.on = e.target.checked; } })),
+        h("button", { class: "btn", "aria-label": `Naikkan ${label(it.id)}`, disabled: i === 0, onclick: () => { [items[i - 1], items[i]] = [items[i], items[i - 1]]; paint(); } }, "↑"),
+        h("button", { class: "btn", "aria-label": `Turunkan ${label(it.id)}`, disabled: i === items.length - 1, onclick: () => { [items[i + 1], items[i]] = [items[i], items[i + 1]]; paint(); } }, "↓"))));
+      box.replaceChildren(
+        h("div", { class: "panel stack" },
+          h("h3", {}, "Butang bulan di atas app lain"),
+          h("label", { class: "toggle" }, h("span", {}, "Paparkan butang bulan terapung", h("span", { class: "muted", style: { display: "block" } }, "Muncul di atas semua app, kecuali bila Asbab sendiri dibuka.")),
+            h("input", { type: "checkbox", checked: !!cur.bubble, onchange: async (e) => {
+              await save({ bubble: e.target.checked });
+              if (e.target.checked && !st.overlay && !st.browser) Native.openSettings("overlay");
+              await Native.bubbleSync({ unhide: true });
+              setTimeout(paint, 500);
+            } })),
+          st.browser ? h("p", { class: "muted" }, "Hanya berfungsi dalam app Android.") : h("div", { class: "row" },
+            h("span", { class: `lampu${st.overlay ? " ok" : ""}` }), h("span", { style: { flex: 1 } }, st.overlay ? "Kebenaran \"Papar di atas app lain\" diberi" : "Perlu kebenaran \"Papar di atas app lain\""),
+            st.overlay ? null : h("button", { class: "btn utama", onclick: () => Native.openSettings("overlay") }, "Benarkan")),
+          h("p", { class: "muted" }, "Seret untuk alih; ia melekat ke tepi skrin. Seret ke bawah skrin untuk tidurkan. Tekan untuk buka jalur menu; tekan di luar untuk tutup."),
+          h("div", { class: "row" },
+            h("button", { class: "btn", onclick: async () => { await Native.bubbleSync({ unhide: true }); res.textContent = "Butang bulan dikejutkan."; } }, "Tunjuk semula"),
+            h("button", { class: "btn", onclick: async () => { await Native.bubbleSync({ resetPosition: true, unhide: true }); res.textContent = "Kedudukan dikembalikan."; } }, "Kembalikan kedudukan")),
+          res),
+        h("div", { class: "panel stack" },
+          h("h3", {}, "Isi dan susunan jalur"),
+          h("p", { class: "muted" }, "Hidupkan atau matikan setiap ikon, dan susun dengan ↑ ↓. Kunci skrin perlu Kebolehcapaian Asbab dihidupkan (Asbab tak membaca skrin selagi suis \"Baca isi skrin app\" ditutup)."),
+          list,
+          h("button", { class: "btn utama", onclick: async () => { await save({ bubbleItems: items }); await Native.bubbleSync(); res.textContent = "Disimpan."; } }, "Simpan susunan")),
+        h("div", { class: "panel stack" },
+          h("h3", {}, "Butang bulan dalam Asbab"),
+          h("label", { class: "toggle" }, h("span", {}, "Paparkan butang bulan dalam app"), h("input", { type: "checkbox", checked: localStorage.getItem("asbab:moonOff") !== "1", onchange: (e) => {
+            localStorage.setItem("asbab:moonOff", e.target.checked ? "0" : "1");
+            const m = $("#moonbtn"); if (m) m.style.display = e.target.checked ? "" : "none";
+          } }))));
     };
     paint();
     return box;

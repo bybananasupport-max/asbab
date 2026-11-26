@@ -66,6 +66,8 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     blocklist: [],
     retentionDays: 3,
     access: { whatsapp: false, email: false, sms_bank: false, skrin: false, fail: false, penggunaan_app: false },
+    bubble: false,
+    bubbleItems: [],
   };
   const SCENES = ["gunung", "sungai", "bukit", "kampung"];
   const WAKTU = [["fajr", "Subuh"], ["dhuhr", "Zohor"], ["asr", "Asar"], ["maghrib", "Maghrib"], ["isha", "Isyak"]];

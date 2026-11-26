@@ -105,7 +105,11 @@
   const requestNotifications = async () => (Asbab ? (await Asbab.requestNotifications()).granted : false);
   const openSettings = (page) => Asbab?.openSettings({ page });
   const testBilal = (seconds = 10) => Asbab?.testBilal({ seconds });
-  const takeRoute = async () => (Asbab ? (await Asbab.takeRoute()).route : null);
+  // What a tapped notification or the moon button asked for: { route, text } (text = voice command).
+  const takeRoute = async () => (Asbab ? Asbab.takeRoute() : { route: null, text: null });
+  // Lets the moon button show the current page as a white circle.
+  const rememberRoute = (hash) => Asbab?.dbPut({ key: "_ui:route", value: hash }).catch(() => {});
+  const bubbleSync = (opts = {}) => (Asbab ? Asbab.bubbleSync(opts) : Promise.resolve({ hidden: false }));
 
   // Voice input in Bahasa Melayu. Native speech recogniser on the phone, Web Speech in a browser.
   const WebSR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -154,7 +158,7 @@
   window.Native = {
     github, secretStatus, secretSet, testClaude, testGithub, claude, accessStatus, setPaused, serviceSync, ingestClear,
     isNative, appInfo, openUrl, checkUpdate, releasesUrl: `https://github.com/${REPO}/releases`,
-    openStore, prayerTimes, reschedule, status, requestNotifications, openSettings, testBilal, takeRoute,
+    openStore, prayerTimes, reschedule, status, requestNotifications, openSettings, testBilal, takeRoute, rememberRoute, bubbleSync,
     canListen, listen,
     onResume: (fn) => App?.addListener("resume", fn),
   };

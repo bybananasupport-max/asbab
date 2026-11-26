@@ -143,8 +143,23 @@ class AsbabPlugin : Plugin() {
     @PluginMethod
     fun takeRoute(call: PluginCall) {
         val route = MainActivity.pendingRoute
+        val voice = MainActivity.pendingVoice
         MainActivity.pendingRoute = null
-        call.resolve(JSObject().put("route", route))
+        MainActivity.pendingVoice = null
+        call.resolve(JSObject().put("route", route).put("text", voice))
+    }
+
+    /* ---------- Phase 4: floating moon button ---------- */
+
+    /** Re-reads the moon button settings (call after saving Tetapan > Butang Terapung). */
+    @PluginMethod
+    fun bubbleSync(call: PluginCall) {
+        if (call.getBoolean("unhide") == true) db.del("_bubble:hidden")
+        if (call.getBoolean("resetPosition") == true) db.del("_bubble:pos")
+        Overlay.remove()
+        AsbabService.refresh(context)
+        Overlay.sync(context)
+        call.resolve(JSObject().put("hidden", db.get("_bubble:hidden") == "1"))
     }
 
     /* ---------- Phase 3: keys (never returned to the web UI) ---------- */
