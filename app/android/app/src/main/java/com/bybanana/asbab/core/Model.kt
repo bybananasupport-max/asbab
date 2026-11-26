@@ -22,7 +22,18 @@ data class Settings(
     val quietTo: String = "05:30",
     val maxProactive: Int = 3,
     val priorities: List<String> = listOf("Solat", "Kecemasan client dan website down", "Kelas dan tugasan", "Bisnes", "Lain-lain"),
+    // Phase 3: second brain and phone access
+    val aiEnabled: Boolean = true,
+    val aiDailyCap: Int = 60,
+    val modelLight: String = "claude-haiku-5-5",
+    val access: Map<String, Boolean> = emptyMap(),
+    val blocklist: List<String> = emptyList(),
+    val retentionDays: Int = 3,
+    // Phase 4: floating moon button
+    val bubble: Boolean = false,
 ) {
+    fun allowed(toggle: String) = access[toggle] == true
+
     companion object {
         /** Missing or broken fields fall back to the defaults (same defaults as core.js). */
         fun fromJson(raw: String?): Settings {
@@ -39,6 +50,13 @@ data class Settings(
                 quietTo = validTime(o.optString("quietTo"), d.quietTo),
                 maxProactive = o.optInt("maxProactive", d.maxProactive).coerceAtLeast(0),
                 priorities = if (pr.isNullOrEmpty()) d.priorities else pr,
+                aiEnabled = o.optBoolean("aiEnabled", d.aiEnabled),
+                aiDailyCap = o.optInt("aiDailyCap", d.aiDailyCap).coerceAtLeast(0),
+                modelLight = o.optString("modelLight", d.modelLight).ifBlank { d.modelLight },
+                access = o.optJSONObject("access")?.let { a -> a.keys().asSequence().associateWith { a.optBoolean(it) } } ?: emptyMap(),
+                blocklist = o.optJSONArray("blocklist")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } } ?: emptyList(),
+                retentionDays = o.optInt("retentionDays", d.retentionDays).coerceIn(1, 30),
+                bubble = o.optBoolean("bubble", d.bubble),
             )
         }
     }
