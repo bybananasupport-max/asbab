@@ -25,8 +25,8 @@ web-reference/          versi web lama. Rujukan sahaja, jangan deploy.
 
 | Fasa | Isi | Status |
 |---|---|---|
-| 1 | Rangka app, CI, kulit UI kaca, wallpaper, semakan update | sedang dibina |
-| 2 | Ciri tempatan tanpa AI: chat, Hari Ini, waktu solat JAKIM, Mod Bilal, Catatan, Tetapan | belum |
+| 1 | Rangka app, CI, kulit UI kaca, wallpaper, semakan update | siap (v0.1.3) |
+| 2 | Ciri tempatan tanpa AI: otak sendiri, waktu solat JAKIM, Mod Bilal, peringatan, suara | sedang dibina |
 | 3 | Otak kedua (Claude), akses telefon (notifikasi, skrin, penggunaan app) | belum |
 | 4 | Butang bulan terapung di atas app lain | belum |
 | 5 | Medan Graviti project, project kod GitHub, pantau website, backup | belum |

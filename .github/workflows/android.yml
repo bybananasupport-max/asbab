@@ -59,6 +59,10 @@ jobs:
       - name: Copy web app into Android project
         run: npm run build
 
+      - name: Kotlin unit tests (reminders, JAKIM)
+        working-directory: app/android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
       - name: Prepare release keystore (from secrets)
         if: env.HAS_KEYSTORE == 'true'
         env:

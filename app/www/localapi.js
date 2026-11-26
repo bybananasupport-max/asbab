@@ -1,14 +1,15 @@
 // Asbab local API: the same routes as web-reference/netlify/functions/api.mjs,
 // but running inside the phone against the local Store. No server, no password.
 //
-// Phase 1 scope: rooms, chat (placeholder reply), today (no prayer times yet),
+// Phase 2 scope: rooms, chat with the own brain (no AI), today with JAKIM prayer times,
 // notes, settings, projects (no GitHub yet), export/import.
-// Later phases plug in the own brain (Phase 2), Claude (Phase 3) and GitHub (Phase 5).
+// Claude arrives in Phase 3 and GitHub in Phase 5.
 (function (root, factory) {
-  const api = factory(root.Core || (typeof require === "function" ? require("./core.js") : null));
+  const req = typeof require === "function" ? require : null;
+  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"));
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LocalApi = api;
-})(typeof self !== "undefined" ? self : this, function (Core) {
+})(typeof self !== "undefined" ? self : this, function (Core, Brain) {
   const { nowMY, addDays, uid, DEFAULT_SETTINGS, SCENES, NOTE_KINDS } = Core;
   const MAIN_ROOM = "utama";
 
@@ -16,8 +17,16 @@
     constructor(message, status = 400) { super(message); this.status = status; }
   }
 
-  // deps: { store, version, clock?() -> Date }
-  function createLocalApi({ store, version = "0.1.0-dev", clock = () => new Date() }) {
+  // deps:
+  //   store                 async key-value store (see store.js)
+  //   version               installed app version
+  //   clock()               current Date (tests pass a fixed one)
+  //   prayerTimes(zone, d)  JAKIM times for one date, or null (native side fetches and caches)
+  //   onChange(what)        called after data that affects reminders changes ("schedule")
+  function createLocalApi({
+    store, version = "0.1.0-dev", clock = () => new Date(),
+    prayerTimes = async () => null, onChange = () => {},
+  }) {
     const { get, put, del, keys } = store;
     const now = () => nowMY(clock());
 
@@ -89,6 +98,13 @@
       await put("devlog", list.slice(0, 300));
     }
     const projects = () => get("projects", []);
+    const changed = () => { try { onChange("schedule"); } catch { /* reminders are best effort */ } };
+    const prayer = (zone, date) => Promise.resolve(prayerTimes(zone, date)).catch(() => null);
+
+    const localBrain = Brain.createBrain({
+      now, notes, addNotes, createRoom, projects, prayerTimes: prayer,
+      saveProjects: (list) => put("projects", list),
+    });
 
     /* ---------- router ---------- */
     async function route(method, [a, b, c], body) {
@@ -136,10 +152,18 @@
         const room = (await rooms()).find((r) => r.id === roomId);
         if (!room) throw new ApiError("Bilik tak wujud.", 404);
         const user = body.skipUser ? null : await addMessage(roomId, { role: "user", text });
-        // Phase 1: the own brain (Phase 2) and second brain (Phase 3) are not installed yet.
+
+        // Own brain first: no AI.
+        const local = await localBrain(text, { settings: s, room });
+        if (local) {
+          if (local.saved) changed();
+          const msg = await addMessage(roomId, { role: "asbab", text: local.reply, ai: false, saved: local.saved || 0 });
+          return { user, messages: [msg], navigate: local.navigate || null };
+        }
+        // Second brain (Claude) is installed in Phase 3.
         const msg = await addMessage(roomId, {
           role: "asbab", ai: false,
-          text: "Mesej kau dah disimpan. Otak Asbab sendiri (waktu solat, jadual, nota, belanja) akan dipasang dalam Fasa 2, dan otak kedua (Claude) dalam Fasa 3.",
+          text: "Soalan ni perlukan otak kedua (Claude), yang akan dipasang dalam Fasa 3. Buat masa ni aku cuma jawab dari catatan aku sendiri. Taip \"tolong\" untuk senarai perkara yang aku boleh buat.",
         });
         return { user, messages: [msg] };
       }
@@ -151,8 +175,9 @@
         const jadual = all.filter((x) => x.kind === "jadual" && x.date === n.date).sort(byTime);
         const esok = all.filter((x) => x.kind === "jadual" && x.date === addDays(n.date, 1)).sort(byTime);
         const belanja = all.filter((x) => x.kind === "belanja" && x.date === n.date);
+        const [pt, ptTomorrow] = await Promise.all([prayer(s.zone, n.date), prayer(s.zone, addDays(n.date, 1))]);
         return {
-          now: n, prayer: null, prayerTomorrow: null, solat: await get(`solat:${n.date}`, {}),
+          now: n, prayer: pt, prayerTomorrow: ptTomorrow, solat: await get(`solat:${n.date}`, {}),
           jadual, esok, belanja, belanjaTotal: belanja.reduce((x, y) => x + (y.amount || 0), 0),
         };
       }
@@ -163,14 +188,20 @@
         if (body.done === false) delete marks[body.waktu];
         else marks[body.waktu] = Date.now();
         await put(`solat:${date}`, marks);
+        changed();
         return { solat: marks };
       }
 
       if (a === "notes") {
         if (method === "GET") return { notes: await notes(), devlog: await get("devlog", []) };
-        if (method === "POST") return { added: await addNotes([body], "manual") };
+        if (method === "POST") {
+          const added = await addNotes([body], "manual");
+          changed();
+          return { added };
+        }
         if (method === "DELETE" && b) {
           await put("notes", (await notes()).filter((x) => x.id !== b));
+          changed();
           return { ok: true };
         }
       }
@@ -180,6 +211,7 @@
         if (method === "PUT") {
           const next = { ...s, ...body, access: { ...s.access, ...(body.access || {}) } };
           await put("settings", next);
+          changed();
           if (body.personality && body.personality !== s.personality) await devlog("Fail personaliti Asbab dikemas kini.");
           return { settings: next };
         }
@@ -236,6 +268,7 @@
         if (!body || body.asbab !== "identiti" || !body.data || typeof body.data !== "object") throw new ApiError("Fail ni bukan backup identiti Asbab.");
         for (const [k, v] of Object.entries(body.data)) await put(k, v);
         await devlog("Identiti Asbab dipulihkan daripada backup.");
+        changed();
         return { ok: true, count: Object.keys(body.data).length };
       }
 

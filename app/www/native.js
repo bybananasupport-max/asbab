@@ -6,6 +6,8 @@
   const plugin = (name) => (isNative && cap.registerPlugin ? cap.registerPlugin(name) : null);
   const App = plugin("App");
   const Browser = plugin("Browser");
+  // Asbab's own Kotlin plugin (app/android/.../AsbabPlugin.kt): database, prayer times, reminders, voice.
+  const Asbab = plugin("AsbabNative");
 
   const REPO = "bybananasupport-max/asbab";
 
@@ -58,5 +60,63 @@
     });
   }
 
-  window.Native = { isNative, appInfo, openUrl, checkUpdate, releasesUrl: `https://github.com/${REPO}/releases` };
+  /* ---------- Phase 2: database, prayer times, reminders, voice ---------- */
+
+  // The data store: SQLite on the phone, or localStorage when the UI is opened in a browser.
+  async function openStore() {
+    if (!Asbab) return Store.createStore(localStorage);
+    const store = Store.createNativeStore(Asbab);
+    try {
+      const n = await Store.migrateLocalToNative(localStorage, store);
+      if (n) console.log(`Asbab: ${n} rekod dipindah ke SQLite.`);
+    } catch (e) {
+      console.error("Migration failed", e);
+    }
+    return store;
+  }
+
+  async function prayerTimes(zone, date) {
+    if (!Asbab) return null;
+    return (await Asbab.prayerTimes({ zone, date })).times || null;
+  }
+
+  // Re-plan reminders after a change. Many quick changes are merged into one call.
+  let timer = null;
+  function reschedule() {
+    if (!Asbab) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => Asbab.reschedule().catch(() => {}), 400);
+  }
+
+  async function status() {
+    if (!Asbab) return { notifications: false, exactAlarms: false, browser: true };
+    return Asbab.status();
+  }
+  const requestNotifications = async () => (Asbab ? (await Asbab.requestNotifications()).granted : false);
+  const openSettings = (page) => Asbab?.openSettings({ page });
+  const testBilal = (seconds = 10) => Asbab?.testBilal({ seconds });
+  const takeRoute = async () => (Asbab ? (await Asbab.takeRoute()).route : null);
+
+  // Voice input in Bahasa Melayu. Native speech recogniser on the phone, Web Speech in a browser.
+  const WebSR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const canListen = !!(Asbab || WebSR);
+  async function listen() {
+    if (Asbab) return (await Asbab.listen({ lang: "ms-MY" })).text || "";
+    return new Promise((resolve, reject) => {
+      const rec = new WebSR();
+      rec.lang = "ms-MY";
+      rec.interimResults = false;
+      rec.onresult = (e) => resolve(e.results[0][0].transcript);
+      rec.onerror = (e) => reject(new Error(e.error || "Suara tak dapat dikenal pasti."));
+      rec.onend = () => resolve("");
+      rec.start();
+    });
+  }
+
+  window.Native = {
+    isNative, appInfo, openUrl, checkUpdate, releasesUrl: `https://github.com/${REPO}/releases`,
+    openStore, prayerTimes, reschedule, status, requestNotifications, openSettings, testBilal, takeRoute,
+    canListen, listen,
+    onResume: (fn) => App?.addListener("resume", fn),
+  };
 })();

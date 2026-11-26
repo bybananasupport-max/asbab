@@ -43,10 +43,17 @@ describe("rooms and chat", () => {
     expect(b.rooms.map((r) => r.id)).toEqual(["utama"]);
   });
 
-  it("labels phase 1 replies as own brain (no AI)", async () => {
-    const d = await api("chat", { method: "POST", body: { roomId: "utama", text: "waktu solat" } });
-    expect(d.user.text).toBe("waktu solat");
-    expect(d.messages[0]).toMatchObject({ role: "asbab", ai: false });
+  it("answers with the own brain and labels it (no AI)", async () => {
+    const d = await api("chat", { method: "POST", body: { roomId: "utama", text: "belanja RM12.50 nasi lemak" } });
+    expect(d.user.text).toBe("belanja RM12.50 nasi lemak");
+    expect(d.messages[0]).toMatchObject({ role: "asbab", ai: false, saved: 1 });
+    expect(d.messages[0].text).toContain("RM12.50");
+  });
+
+  it("is honest when a question needs the second brain", async () => {
+    const d = await api("chat", { method: "POST", body: { roomId: "utama", text: "terangkan teori relativiti" } });
+    expect(d.messages[0].ai).toBe(false);
+    expect(d.messages[0].text).toContain("Fasa 3");
   });
 
   it("rejects empty messages and unknown rooms", async () => {
@@ -65,7 +72,7 @@ describe("notes and today", () => {
     expect(t.now.date).toBe("2026-11-25");
     expect(t.jadual.map((n) => n.title)).toEqual(["Subuh berjemaah", "Kelas"]);
     expect(t.belanjaTotal).toBeCloseTo(7.5);
-    expect(t.prayer).toBeNull();
+    expect(t.prayer).toBeNull(); // no prayerTimes dependency given
   });
 
   it("ignores notes without a title and unknown kinds become nota", async () => {
@@ -122,5 +129,29 @@ describe("export and import", () => {
 
   it("refuses files that are not an Asbab backup", async () => {
     await expect(api("import", { method: "POST", body: { hello: 1 } })).rejects.toThrow("bukan backup");
+  });
+});
+
+describe("phase 2 hooks", () => {
+  it("passes JAKIM times to Hari Ini and tells the scheduler about changes", async () => {
+    const calls = [];
+    const pt = { date: "2026-11-25", fajr: "05:50", dhuhr: "13:10", asr: "16:30", maghrib: "19:05", isha: "20:15" };
+    const a = LocalApi.createLocalApi({
+      store, version: "0.2.0", clock,
+      prayerTimes: async (zone, date) => (date === "2026-11-25" ? { ...pt, zone } : null),
+      onChange: (what) => calls.push(what),
+    });
+    const t = await a("today");
+    expect(t.prayer).toMatchObject({ fajr: "05:50", zone: "KDH01" });
+    expect(t.prayerTomorrow).toBeNull();
+    await a("notes", { method: "POST", body: { kind: "jadual", title: "Kelas", time: "14:00" } });
+    await a("solat", { method: "POST", body: { waktu: "fajr", done: true } });
+    await a("settings", { method: "PUT", body: { bilalLead: 15 } });
+    expect(calls).toEqual(["schedule", "schedule", "schedule"]);
+  });
+
+  it("survives a failing prayer source", async () => {
+    const a = LocalApi.createLocalApi({ store, clock, prayerTimes: async () => { throw new Error("offline"); } });
+    expect((await a("today")).prayer).toBeNull();
   });
 });

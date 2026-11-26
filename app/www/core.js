@@ -68,6 +68,7 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     access: { whatsapp: false, email: false, sms_bank: false, skrin: false, fail: false, penggunaan_app: false },
   };
   const SCENES = ["gunung", "sungai", "bukit", "kampung"];
+  const WAKTU = [["fajr", "Subuh"], ["dhuhr", "Zohor"], ["asr", "Asar"], ["maghrib", "Maghrib"], ["isha", "Isyak"]];
   const NOTE_KINDS = ["nota", "jadual", "belanja", "makan", "idea", "log"];
 
   /* ---------- Versions and app updates ---------- */
@@ -101,5 +102,5 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     };
   }
 
-  return { TZ, nowMY, addDays, hariOf, toMin, uid, PERSONALITY, DEFAULT_SETTINGS, SCENES, NOTE_KINDS, parseVersion, compareVersions, updateInfo };
+  return { TZ, nowMY, addDays, hariOf, toMin, uid, PERSONALITY, DEFAULT_SETTINGS, SCENES, WAKTU, NOTE_KINDS, parseVersion, compareVersions, updateInfo };
 });
