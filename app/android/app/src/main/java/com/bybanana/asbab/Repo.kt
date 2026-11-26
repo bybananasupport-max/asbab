@@ -1,7 +1,9 @@
 package com.bybanana.asbab
 
 import android.content.Context
+import com.bybanana.asbab.core.Ingested
 import com.bybanana.asbab.core.Jakim
+import com.bybanana.asbab.core.NewNote
 import com.bybanana.asbab.core.MALAYSIA
 import com.bybanana.asbab.core.Note
 import com.bybanana.asbab.core.PrayerDay
@@ -113,8 +115,69 @@ class Repo(context: Context) {
         emptyList()
     }
 
+    /* ---------- Phase 3: AI usage, pause, captured data ---------- */
+
+    fun usageToday(): Int = try { JSONObject(db.get("usage:${today()}") ?: "{}").optInt("count", 0) } catch (e: Exception) { 0 }
+
+    fun bumpUsage() = db.update("usage:${today()}") { raw ->
+        val o = try { JSONObject(raw ?: "{}") } catch (e: Exception) { JSONObject() }
+        o.put("count", o.optInt("count", 0) + 1).toString()
+    }
+
+    /** "Jeda Asbab": when true, nothing is read from other apps. */
+    var paused: Boolean
+        get() = db.get("_paused") == "true"
+        set(v) { db.put("_paused", if (v) "true" else "false") }
+
+    fun ingested(): List<Ingested> = Ingested.listFromJson(db.get("ingest"))
+
+    /** Stores one captured item (keeps the newest 1000). Returns false for a duplicate. */
+    fun addIngested(item: Ingested): Boolean {
+        var added = false
+        db.update("ingest") { raw ->
+            val list = Ingested.listFromJson(raw).toMutableList()
+            val dup = list.any { it.src == item.src && it.app == item.app && it.title == item.title && it.text == item.text && item.ts - it.ts < 6 * 3600_000L }
+            if (!dup) { list += item; added = true }
+            Ingested.listToJson(list.takeLast(1000))
+        }
+        return added
+    }
+
+    fun markIngestedDone(ids: Set<String>) = db.update("ingest") { raw ->
+        Ingested.listToJson(Ingested.listFromJson(raw).map { if (it.id in ids) it.copy(done = true) else it })
+    }
+
+    fun clearIngested() = db.del("ingest")
+
+    /** Adds notes to Catatan in the web UI's format. */
+    fun addNotes(items: List<NewNote>, source: String, text: String = "") {
+        if (items.isEmpty()) return
+        db.update("notes") { raw ->
+            val list = try { JSONArray(raw ?: "[]") } catch (e: Exception) { JSONArray() }
+            for (n in items) {
+                val now = System.currentTimeMillis()
+                list.put(JSONObject().apply {
+                    put("id", java.lang.Long.toString(now, 36) + (10000..99999).random())
+                    put("ts", now); put("source", source); put("kind", n.kind); put("title", n.title)
+                    put("text", text.take(2000)); put("date", n.date); put("time", n.time)
+                    n.amount?.let { put("amount", it) }
+                })
+            }
+            list.toString()
+        }
+    }
+
+    fun devlog(text: String) = db.update("devlog") { raw ->
+        val list = try { JSONArray(raw ?: "[]") } catch (e: Exception) { JSONArray() }
+        val out = JSONArray().put(JSONObject().apply { put("ts", System.currentTimeMillis()); put("text", text) })
+        for (i in 0 until minOf(list.length(), 299)) out.put(list.get(i))
+        out.toString()
+    }
+
     /** Removes old "sent:" markers and old prayer days so the database stays small. */
     fun prune(now: ZonedDateTime) {
+        val keepRaw = now.toInstant().toEpochMilli() - settings().retentionDays * 86_400_000L
+        db.update("ingest") { raw -> Ingested.listToJson(Ingested.listFromJson(raw).filter { it.ts >= keepRaw }) }
         val keepFrom = now.withZoneSameInstant(MALAYSIA).toLocalDate().minusDays(3).toString()
         for (k in db.keys("sent:")) if (k.removePrefix("sent:").take(10) < keepFrom) db.del(k)
         for (k in db.keys("prayer:")) if (k.takeLast(10) < keepFrom) db.del(k)

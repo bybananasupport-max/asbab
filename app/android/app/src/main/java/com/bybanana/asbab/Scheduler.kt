@@ -43,6 +43,9 @@ object Scheduler {
             val retry = System.currentTimeMillis() + RETRY_MS
             next = if (next == null) retry else minOf(next, retry)
         }
+        // Captured notifications waiting for the hourly AI extraction.
+        val extractAt = Capture.nextExtractAt(context)
+        if (extractAt > 0) next = if (next == null) extractAt else minOf(next, extractAt)
         if (next == null) next = System.currentTimeMillis() + RETRY_MS
         arm(context, next)
         val first = events.firstOrNull()
@@ -68,10 +71,35 @@ object Scheduler {
             repo.markSent(e.key) // first, so a crash can never repeat a reminder
             val decision = Planner.decide(e, now, s, repo.solatDone(e.date), repo.proactiveCount(e.date))
             if (decision is Decision.Skip) continue
-            val body = if (e.kind == Kind.BRIEF) Planner.brief(e.date, s, repo.notes(), prayers[e.date], repo.downSites()) else e.body
+            val body = when (e.kind) {
+                Kind.BRIEF -> Planner.brief(e.date, s, repo.notes(), prayers[e.date], repo.downSites()) +
+                    (Usage.yesterdayLine(context, repo, e.date)?.let { "\n$it" } ?: "")
+                Kind.CHECKIN -> aiCheckin(context, repo, e) ?: e.body
+                else -> e.body
+            }
             deliver(context, repo, e, body)
         }
+        try { Capture.maybeExtract(context) } catch (x: Exception) { android.util.Log.e("Asbab", "extract", x) }
         reschedule(context)
+    }
+
+    /** Evening check-in written by the light model (within the daily cap); null = use the fixed question. */
+    private fun aiCheckin(context: Context, repo: Repo, e: Event): String? {
+        val s = repo.settings()
+        if (!s.aiEnabled || repo.usageToday() >= s.aiDailyCap) return null
+        val key = SecretStore.get(context, SecretStore.CLAUDE) ?: return null
+        val jadual = repo.notes().filter { it.kind == "jadual" && it.date == e.date }.joinToString(", ") { it.title }.ifBlank { "tiada" }
+        return try {
+            val text = Claude.complete(
+                key, s.modelLight, repo.db.get("settings")?.let { org.json.JSONObject(it).optString("personality") }?.ifBlank { null } ?: "Kau Asbab, pembantu peribadi Amin.",
+                "Tulis satu mesej check-in petang yang ringkas (maksimum 2 ayat) kepada ${s.name}. Tanya tentang harinya supaya dia bercerita. " +
+                    "Hari ini ${Planner.hari(e.date)}. Jadual hari ini: $jadual. Jangan guna senarai.",
+                200,
+            ).trim()
+            if (text.isBlank()) null else { repo.bumpUsage(); text }
+        } catch (x: Exception) {
+            null
+        }
     }
 
     private fun deliver(context: Context, repo: Repo, e: Event, body: String) {

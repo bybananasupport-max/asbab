@@ -42,9 +42,11 @@ const buzz = (ms = 12) => navigator.vibrate?.(ms);
 // A.api is created in start() once the installed app version is known.
 const api = (...args) => A.api(...args);
 
-// Second brain (Claude) is installed in Phase 3.
-async function think() {
-  throw new Error("Otak kedua (Claude) akan dipasang dalam Fasa 3.");
+// Second brain (Claude), through the native plugin so the key never enters the web UI.
+// weight "light" = routine work, "heavy" = coding. Model names come from Tetapan > Otak Kedua.
+async function think({ system, prompt, weight = "light", maxTokens, model }, onText) {
+  const s = A.boot.settings;
+  return Native.claude({ system, prompt, model: model || (weight === "heavy" ? s.modelHeavy : s.modelLight), maxTokens: maxTokens || (weight === "heavy" ? 16000 : 1200) }, onText);
 }
 A.think = think;
 
@@ -53,7 +55,8 @@ async function start() {
   A.version = (await Native.appInfo()).version;
   A.api = LocalApi.createLocalApi({
     store: await Native.openStore(), version: A.version,
-    prayerTimes: Native.prayerTimes, onChange: Native.reschedule,
+    prayerTimes: Native.prayerTimes, onChange: () => { Native.reschedule(); Native.serviceSync(); },
+    secrets: Native.secretStatus,
   });
   A.boot = await A.api("bootstrap");
   Theme.apply();
@@ -67,6 +70,7 @@ async function start() {
   else if (!location.hash) location.hash = "#/chat/utama";
   else route();
   Native.reschedule();
+  Native.serviceSync();
   firstRunPermissions();
   Native.onResume(async () => {
     const r = await Native.takeRoute();
@@ -286,7 +290,7 @@ async function sendMessage(roomId, text, { allowAI = false, skipUser = false } =
       box?.append(big);
       const live = h("div", { class: "msg asbab" });
       let started = false;
-      const raw = await think({ ...d.context, weight: "light" }, (t) => {
+      const raw = await think({ ...d.context, model: d.model, weight: "light" }, (t) => {
         if (!started) { big.remove(); box?.append(live); started = true; }
         live.textContent = t.split("<<NOTA>>")[0];
         $("#view").scrollTop = 1e9;

@@ -17,3 +17,8 @@ nav.bar { bottom: calc(12px + var(--sa-bottom)); }
 /* No text selection or tap flash on controls; feels like a native app. */
 button, nav.bar a, .btn { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
 button[disabled] { opacity: 0.5; }
+
+/* Phase 3: connection status */
+.lampu.merah { background: #e8706a; box-shadow: 0 0 10px rgba(232,112,106,.7); }
+.ok-teks { color: #8fd6a8; }
+details summary { cursor: pointer; padding: 6px 0; }

@@ -50,10 +50,10 @@ describe("rooms and chat", () => {
     expect(d.messages[0].text).toContain("RM12.50");
   });
 
-  it("is honest when a question needs the second brain", async () => {
+  it("is honest when the second brain is not connected", async () => {
     const d = await api("chat", { method: "POST", body: { roomId: "utama", text: "terangkan teori relativiti" } });
     expect(d.messages[0].ai).toBe(false);
-    expect(d.messages[0].text).toContain("Fasa 3");
+    expect(d.messages[0].text).toContain("Sambungan & API");
   });
 
   it("rejects empty messages and unknown rooms", async () => {
@@ -153,5 +153,47 @@ describe("phase 2 hooks", () => {
   it("survives a failing prayer source", async () => {
     const a = LocalApi.createLocalApi({ store, clock, prayerTimes: async () => { throw new Error("offline"); } });
     expect((await a("today")).prayer).toBeNull();
+  });
+});
+
+describe("second brain (phase 3)", () => {
+  const withKey = () => LocalApi.createLocalApi({ store, version: "0.3.0", clock, secrets: async () => ({ claude: true, github: false }) });
+
+  it("asks for Claude only after the own brain, with personality and untrusted-data rules", async () => {
+    const a = withKey();
+    expect((await a("bootstrap")).ai).toBe(true);
+    const d = await a("chat", { method: "POST", body: { roomId: "utama", text: "apa pendapat kau tentang bisnes?" } });
+    expect(d.needAI).toBe(true);
+    expect(d.model).toBe("claude-haiku-5-5");
+    expect(d.context.system).toContain("Nama kau Asbab");
+    expect(d.context.system).toContain("DATA sahaja");
+    expect(d.context.prompt).toContain("Mesej baharu Amin: apa pendapat kau tentang bisnes?");
+    // Own brain still answers without AI even when Claude is available.
+    expect((await a("chat", { method: "POST", body: { roomId: "utama", text: "tolong" } })).messages[0].ai).toBe(false);
+  });
+
+  it("saves notes from Claude's answer (AI teaches once) and counts usage", async () => {
+    const a = withKey();
+    const raw = 'Baik, aku ingat kelas tu.\n<<NOTA>>[{"kind":"jadual","title":"Kelas Pengaturcaraan","date":"2026-11-27","time":"09:00"}]';
+    const r = await a("chat/finish", { method: "POST", body: { roomId: "utama", text: raw } });
+    expect(r.message).toMatchObject({ ai: true, text: "Baik, aku ingat kelas tu.", saved: 1 });
+    expect(r.usage.count).toBe(1);
+    const { notes } = await a("notes");
+    expect(notes[0]).toMatchObject({ kind: "jadual", title: "Kelas Pengaturcaraan", date: "2026-11-27", time: "09:00", source: "asbab" });
+  });
+
+  it("respects the daily cap, ask-before-AI and the no-AI switch", async () => {
+    const a = withKey();
+    await a("settings", { method: "PUT", body: { aiDailyCap: 1, askBeforeAI: true } });
+    let d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan baharu" } });
+    expect(d.askAI).toBe(true);
+    d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan baharu", allowAI: true, skipUser: true } });
+    expect(d.needAI).toBe(true);
+    await a("usage/bump", { method: "POST" });
+    d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan lain" } });
+    expect(d.messages[0].text).toContain("Had otak kedua");
+    await a("settings", { method: "PUT", body: { aiEnabled: false } });
+    d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan lain" } });
+    expect(d.messages[0].text).toContain("mod tanpa AI");
   });
 });

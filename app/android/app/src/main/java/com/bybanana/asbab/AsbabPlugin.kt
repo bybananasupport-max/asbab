@@ -29,6 +29,7 @@ import com.getcapacitor.annotation.PermissionCallback
 )
 class AsbabPlugin : Plugin() {
     private val db get() = AsbabDb.get(context)
+    private val net = java.util.concurrent.Executors.newCachedThreadPool()
 
     /* ---------- database ---------- */
 
@@ -124,6 +125,10 @@ class AsbabPlugin : Plugin() {
             "exactAlarm" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
                 Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$pkg")) else null
             "battery" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            "notificationListener" -> Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+            "accessibility" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            "usage" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            "overlay" -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$pkg"))
             else -> null
         } ?: Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
         try {
@@ -140,6 +145,131 @@ class AsbabPlugin : Plugin() {
         val route = MainActivity.pendingRoute
         MainActivity.pendingRoute = null
         call.resolve(JSObject().put("route", route))
+    }
+
+    /* ---------- Phase 3: keys (never returned to the web UI) ---------- */
+
+    @PluginMethod
+    fun secretSet(call: PluginCall) {
+        val name = call.getString("name") ?: return call.reject("name diperlukan")
+        val value = call.getString("value")?.trim().orEmpty()
+        if (name !in SecretStore.NAMES) return call.reject("Nama tak dikenali")
+        if (value.isEmpty()) SecretStore.delete(context, name) else SecretStore.set(context, name, value)
+        call.resolve(secretStatusObj())
+    }
+
+    @PluginMethod
+    fun secretStatus(call: PluginCall) = call.resolve(secretStatusObj())
+
+    private fun secretStatusObj() = JSObject().apply {
+        for (n in SecretStore.NAMES) put(n, SecretStore.has(context, n))
+    }
+
+    /** "Uji sambungan" for Claude: a tiny request with the light model. */
+    @PluginMethod
+    fun testClaude(call: PluginCall) {
+        val key = SecretStore.get(context, SecretStore.CLAUDE) ?: return call.resolve(JSObject().put("ok", false).put("detail", "Key Claude belum disimpan."))
+        val model = call.getString("model") ?: "claude-haiku-5-5"
+        net.execute {
+            try {
+                Claude.complete(key, model, "Balas dengan satu perkataan.", "Balas: ok", 16)
+                call.resolve(JSObject().put("ok", true).put("detail", "Bersambung (model $model)."))
+            } catch (e: NetError) {
+                call.resolve(JSObject().put("ok", false).put("detail", e.message))
+            }
+        }
+    }
+
+    @PluginMethod
+    fun testGithub(call: PluginCall) {
+        val token = SecretStore.get(context, SecretStore.GITHUB) ?: return call.resolve(JSObject().put("ok", false).put("detail", "Token GitHub belum disimpan."))
+        net.execute {
+            val r = GitHub.request(token, "GET", "/user", null)
+            if (r.status == 200) {
+                val login = try { org.json.JSONObject(r.body).optString("login") } catch (e: Exception) { "" }
+                call.resolve(JSObject().put("ok", true).put("detail", "Bersambung sebagai $login."))
+            } else call.resolve(JSObject().put("ok", false).put("detail", GitHub.message(r)))
+        }
+    }
+
+    /** Streams a Claude answer. Text arrives through "claudeDelta" events ({id, text}); resolves with {text}. */
+    @PluginMethod
+    fun claudeStream(call: PluginCall) {
+        val key = SecretStore.get(context, SecretStore.CLAUDE) ?: return call.reject("Key Claude belum disimpan. Tampal dalam Tetapan > Sambungan & API.")
+        val id = call.getString("id") ?: ""
+        val model = call.getString("model") ?: "claude-haiku-5-5"
+        val system = call.getString("system") ?: ""
+        val prompt = call.getString("prompt") ?: return call.reject("prompt diperlukan")
+        val maxTokens = call.getInt("maxTokens") ?: 1200
+        net.execute {
+            try {
+                val text = Claude.stream(key, model, system, prompt, maxTokens) { soFar ->
+                    notifyListeners("claudeDelta", JSObject().put("id", id).put("text", soFar))
+                }
+                call.resolve(JSObject().put("text", text))
+            } catch (e: NetError) {
+                call.reject(e.message)
+            }
+        }
+    }
+
+    /** GitHub API call with the saved token (or none). Resolves {status, body, message?}. */
+    @PluginMethod
+    fun github(call: PluginCall) {
+        val method = (call.getString("method") ?: "GET").uppercase()
+        val path = call.getString("path") ?: return call.reject("path diperlukan")
+        if (!path.startsWith("/") || method !in setOf("GET", "POST", "PUT", "PATCH", "DELETE")) return call.reject("Permintaan GitHub tak sah")
+        val body = call.getString("body")
+        val token = SecretStore.get(context, SecretStore.GITHUB)
+        net.execute {
+            val r = GitHub.request(token, method, path, body)
+            val out = JSObject().put("status", r.status).put("body", r.body)
+            if (r.status !in 200..299) out.put("message", GitHub.message(r))
+            call.resolve(out)
+        }
+    }
+
+    /* ---------- Phase 3: phone access ---------- */
+
+    @PluginMethod
+    fun accessStatus(call: PluginCall) {
+        val pkg = context.packageName
+        val listeners = NotificationManagerCompat.getEnabledListenerPackages(context)
+        val a11y = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+        val repo = Repo(context)
+        val items = repo.ingested()
+        call.resolve(JSObject().apply {
+            put("notificationListener", pkg in listeners)
+            put("accessibility", a11y.split(':').any { it.startsWith("$pkg/") })
+            put("usage", Usage.granted(context))
+            put("overlay", Settings.canDrawOverlays(context))
+            put("paused", repo.paused)
+            put("service", AsbabService.needed(context))
+            put("ingestTotal", items.size)
+            put("ingestWaiting", items.count { !it.done })
+        })
+    }
+
+    @PluginMethod
+    fun setPaused(call: PluginCall) {
+        Capture.setPaused(context, call.getBoolean("paused") ?: true)
+        call.resolve(JSObject().put("paused", Capture.paused))
+    }
+
+    /** Starts or stops the foreground service to match the settings (call after saving settings). */
+    @PluginMethod
+    fun serviceSync(call: PluginCall) {
+        Capture.invalidate()
+        AsbabService.refresh(context)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun ingestClear(call: PluginCall) {
+        Scheduler.async {
+            Repo(context).clearIngested()
+            call.resolve()
+        }
     }
 
     /* ---------- voice input (Bahasa Melayu) ---------- */

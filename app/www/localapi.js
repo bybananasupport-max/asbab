@@ -6,10 +6,10 @@
 // Claude arrives in Phase 3 and GitHub in Phase 5.
 (function (root, factory) {
   const req = typeof require === "function" ? require : null;
-  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"));
+  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"), root.SecondBrain || req("./secondbrain.js"));
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LocalApi = api;
-})(typeof self !== "undefined" ? self : this, function (Core, Brain) {
+})(typeof self !== "undefined" ? self : this, function (Core, Brain, SecondBrain) {
   const { nowMY, addDays, uid, DEFAULT_SETTINGS, SCENES, NOTE_KINDS } = Core;
   const MAIN_ROOM = "utama";
 
@@ -23,9 +23,11 @@
   //   clock()               current Date (tests pass a fixed one)
   //   prayerTimes(zone, d)  JAKIM times for one date, or null (native side fetches and caches)
   //   onChange(what)        called after data that affects reminders changes ("schedule")
+  //   secrets()             -> { claude: bool, github: bool } which keys are saved (never the keys)
   function createLocalApi({
     store, version = "0.1.0-dev", clock = () => new Date(),
     prayerTimes = async () => null, onChange = () => {},
+    secrets = async () => ({ claude: false, github: false }),
   }) {
     const { get, put, del, keys } = store;
     const now = () => nowMY(clock());
@@ -92,6 +94,14 @@
       return added;
     }
     const usageToday = () => get(`usage:${now().date}`, { count: 0 });
+    async function bumpUsage() {
+      const key = `usage:${now().date}`;
+      const u = await get(key, { count: 0 });
+      u.count = (u.count || 0) + 1;
+      await put(key, u);
+      return u;
+    }
+    const keys0 = async () => { try { return await secrets(); } catch { return { claude: false, github: false }; } };
     async function devlog(text) {
       const list = await get("devlog", []);
       list.unshift({ ts: Date.now(), text });
@@ -118,7 +128,7 @@
         }
         return {
           version, settings: s, rooms: await rooms(), projects: await projects(),
-          usage: await usageToday(), ai: false, github: false,
+          usage: await usageToday(), ...(await (async () => { const k = await keys0(); return { ai: !!k.claude, github: !!k.github }; })()),
         };
       }
 
@@ -160,13 +170,43 @@
           const msg = await addMessage(roomId, { role: "asbab", text: local.reply, ai: false, saved: local.saved || 0 });
           return { user, messages: [msg], navigate: local.navigate || null };
         }
-        // Second brain (Claude) is installed in Phase 3.
-        const msg = await addMessage(roomId, {
-          role: "asbab", ai: false,
-          text: "Soalan ni perlukan otak kedua (Claude), yang akan dipasang dalam Fasa 3. Buat masa ni aku cuma jawab dari catatan aku sendiri. Taip \"tolong\" untuk senarai perkara yang aku boleh buat.",
+        // Second brain (Claude), only when allowed.
+        const k = await keys0();
+        if (!s.aiEnabled || !k.claude) {
+          const msg = await addMessage(roomId, {
+            role: "asbab", ai: false,
+            text: s.aiEnabled
+              ? "Otak kedua belum disambung. Tampal key Claude dalam Tetapan > Sambungan & API. Buat masa ni aku cuma jawab dari catatan aku sendiri. Taip \"tolong\" untuk senarai perkara yang aku boleh buat."
+              : "Aku dalam mod tanpa AI sekarang, jadi aku cuma boleh jawab perkara yang dah ada dalam catatan aku. Taip \"tolong\" untuk senarai perkara yang aku boleh buat.",
+          });
+          return { user, messages: [msg] };
+        }
+        const usage = await usageToday();
+        if (usage.count >= s.aiDailyCap) {
+          const msg = await addMessage(roomId, { role: "asbab", ai: false, text: `Had otak kedua hari ni (${s.aiDailyCap} kali) dah capai. Aku masih boleh jawab apa yang ada dalam catatan.` });
+          return { user, messages: [msg] };
+        }
+        if (s.askBeforeAI && !body.allowAI) return { user, askAI: true };
+        const n = now();
+        const project = room.project ? (await projects()).find((x) => x.id === room.project) : null;
+        const context = SecondBrain.buildContext(text, {
+          settings: s, now: n, prayer: await prayer(s.zone, n.date), notes: await notes(),
+          history: (await messages(roomId)).slice(0, -1), project,
         });
-        return { user, messages: [msg] };
+        return { user, needAI: true, context, model: s.modelLight };
       }
+
+      if (a === "chat" && b === "finish" && method === "POST") {
+        const roomId = body.roomId || MAIN_ROOM;
+        const { reply, notes: found } = SecondBrain.parseAnswer(body.text, now().date);
+        const saved = found.length ? await addNotes(found, "asbab") : [];
+        if (saved.length) changed();
+        const message = await addMessage(roomId, { role: "asbab", text: reply, ai: true, saved: saved.length });
+        const usage = await bumpUsage();
+        return { message, saved, usage };
+      }
+
+      if (a === "usage" && b === "bump" && method === "POST") return { usage: await bumpUsage() };
 
       if (a === "today" && method === "GET") {
         const n = now();

@@ -657,7 +657,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       otak: s.aiEnabled ? `Hidup · ${A.boot.usage.count}/${s.aiDailyCap} hari ini` : "Dimatikan (mod tanpa AI)",
       suara: `Mod Bilal ${s.bilalLead} minit · taklimat ${s.briefTime} · senyap ${s.quietFrom}-${s.quietTo}`,
       personaliti: s.personality.slice(0, 60) + "…",
-      akses: `${Object.values(s.access).filter(Boolean).length} daripada ${Object.keys(s.access).length} suis hidup`,
+      akses: `${["whatsapp", "email", "sms_bank", "skrin", "penggunaan_app"].filter((k) => s.access[k]).length} daripada 5 suis hidup`,
       butang: localStorage.getItem("asbab:moonOff") === "1" ? "Disembunyikan" : "Dipaparkan",
       data: "Backup identiti dan pulihkan",
       keselamatan: "Kunci cap jari/PIN: akan datang",
@@ -711,13 +711,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
 
       tema: () => temaPage(s, save),
 
-      sambungan: () => h("div", { class: "stack" },
-        ...[["claude", "Claude (otak kedua)", A.boot.ai], ["github", "GitHub (project kod, update, backup)", A.boot.github]].map(([svc, title, ok]) =>
-          h("div", { class: "panel stack" },
-            h("h3", {}, h("span", { class: `lampu${ok ? " ok" : ""}` }), title),
-            h("input", { type: "password", placeholder: "Tampal key di sini (Fasa 3)", disabled: true, "aria-label": `Key ${title}` }),
-            h("p", { class: "muted" }, "Dalam Fasa 3, kau tampal key di sini. Ia disimpan dalam telefon sahaja, disulitkan dengan Android Keystore, dan tak pernah masuk ke repo."),
-            h("button", { class: "btn", disabled: true }, "Uji sambungan")))),
+      sambungan: () => sambunganPage(),
 
       otak: () => formOf([
         sw("aiEnabled", "Guna otak kedua", s.aiEnabled, "Bila dimatikan, Asbab hanya jawab dari catatan sendiri."),
@@ -749,19 +743,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
         field("Fail personaliti", "personality", { tag: "textarea", rows: 12, value: s.personality }),
       ], (f) => ({ personality: f.get("personality") })),
 
-      akses: () => {
-        const T = [["whatsapp", "Baca WhatsApp"], ["email", "Baca email"], ["sms_bank", "Baca SMS dan notifikasi bank/TNG"], ["skrin", "Baca isi skrin app"], ["fail", "Baca fail dalam telefon"], ["penggunaan_app", "Catat penggunaan app"]];
-        return formOf([
-          h("p", { class: "muted" }, "Suis ni berfungsi dalam app Android Asbab. App bank, e-wallet, password dan OTP sentiasa ditutup."),
-          ...T.map(([k, label]) => sw(`acc_${k}`, label, s.access[k])),
-          field("Orang atau kumpulan yang Asbab tak boleh baca (satu baris satu)", "blocklist", { tag: "textarea", rows: 4, value: (s.blocklist || []).join("\n") }),
-          field("Padam mesej asal selepas berapa hari", "retentionDays", { type: "number", value: s.retentionDays || 3 }),
-        ], (f) => ({
-          access: Object.fromEntries(T.map(([k]) => [k, f.get(`acc_${k}`) === "on"])),
-          blocklist: f.get("blocklist").split("\n").map((x) => x.trim()).filter(Boolean),
-          retentionDays: Number(f.get("retentionDays")) || 3,
-        }));
-      },
+      akses: () => aksesPage(s, save),
 
       butang: () => {
         const off = localStorage.getItem("asbab:moonOff") === "1";
@@ -843,6 +825,114 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
           } }, "Simpan")));
     };
     paint();
+    return box;
+  }
+
+  /* ---------- Sambungan & API (Phase 3) ---------- */
+  function sambunganPage() {
+    const box = h("div", { class: "stack" });
+    const SVC = [
+      ["claude", "Claude (otak kedua)", "Key API Claude (bermula dengan sk-ant-)", "Dapatkan key di console.anthropic.com > API Keys. Bayaran ikut penggunaan; had harian dalam Otak Kedua."],
+      ["github", "GitHub (update, project kod, backup)", "Token GitHub (bermula dengan github_pat_)", "Buat fine-grained token di github.com > Settings > Developer settings. Lihat README untuk kebenaran yang perlu."],
+    ];
+    const paint = async () => {
+      const st = await Native.secretStatus();
+      box.replaceChildren(...SVC.map(([svc, title, ph, help]) => {
+        const res = h("p", { class: "muted", role: "status" });
+        const input = h("input", { type: "password", placeholder: st[svc] ? "•••••••• (disimpan). Tampal baharu untuk tukar" : ph, autocomplete: "off", "aria-label": title });
+        const test = async () => {
+          res.className = "muted"; res.textContent = "Menguji…";
+          const r = svc === "claude" ? await Native.testClaude(A.boot.settings.modelLight) : await Native.testGithub();
+          res.className = r.ok ? "ok-teks" : "err";
+          res.textContent = (r.ok ? "Berjaya: " : "Gagal: ") + r.detail;
+          lamp.classList.toggle("ok", !!r.ok);
+          lamp.classList.toggle("merah", !r.ok);
+        };
+        const lamp = h("span", { class: `lampu${st[svc] ? " ok" : ""}` });
+        return h("div", { class: "panel stack" },
+          h("h3", {}, lamp, title),
+          input,
+          h("p", { class: "muted" }, help),
+          h("div", { class: "row" },
+            h("button", { class: "btn utama", onclick: async () => {
+              const v = input.value.trim();
+              if (!v) { res.textContent = "Tampal key dulu."; return; }
+              try {
+                await Native.secretSet(svc, v);
+                input.value = "";
+                A.boot = await A.api("bootstrap");
+                buzz(15);
+                await test();
+                input.placeholder = "•••••••• (disimpan). Tampal baharu untuk tukar";
+              } catch (e) { res.className = "err"; res.textContent = e.message; }
+            } }, "Simpan"),
+            h("button", { class: "btn", disabled: !st[svc], onclick: test }, "Uji sambungan"),
+            st[svc] ? h("button", { class: "btn bahaya", onclick: async () => {
+              if (!confirm(`Padam ${title} daripada telefon ini?`)) return;
+              await Native.secretSet(svc, "");
+              A.boot = await A.api("bootstrap");
+              paint();
+            } }, "Padam") : null),
+          res);
+      }), h("p", { class: "muted" }, "Key disimpan dalam telefon ini sahaja, disulitkan dengan Android Keystore. Ia tak pernah dipaparkan semula, tak masuk ke backup, dan tak masuk ke repo."));
+    };
+    paint();
+    return box;
+  }
+
+  /* ---------- Akses Telefon (Phase 3) ---------- */
+  function aksesPage(s, save) {
+    const box = h("div", { class: "stack" });
+    const T = [
+      ["whatsapp", "Baca notifikasi WhatsApp"], ["email", "Baca notifikasi email (Gmail, Outlook)"],
+      ["sms_bank", "Baca SMS dan notifikasi bank/e-wallet", "Jumlah seperti RM12.50 direkod sebagai belanja tanpa AI."],
+      ["skrin", "Baca isi skrin app (lalai tutup)", "Hanya app di atas yang dihidupkan. Perlu juga suis Kebolehcapaian Android."],
+      ["penggunaan_app", "Ringkasan penggunaan app harian", "Masuk ke taklimat pagi dan Catatan."],
+    ];
+    const card = (ok, title, desc, page) => h("div", { class: "panel stack" },
+      h("h3", {}, h("span", { class: `lampu${ok ? " ok" : ""}` }), title),
+      h("p", { class: "muted" }, desc),
+      h("button", { class: ok ? "btn" : "btn utama", onclick: () => Native.openSettings(page) }, ok ? "Buka tetapan Android" : "Hidupkan dalam tetapan Android"));
+    const paint = async () => {
+      const st = await Native.accessStatus();
+      const cur = A.boot.settings;
+      if (st.browser) { box.replaceChildren(h("div", { class: "panel" }, "Akses telefon hanya berfungsi dalam app Android.")); return; }
+      const form = h("form", { class: "panel stack", onsubmit: async (e) => {
+        e.preventDefault();
+        const f = new FormData(form);
+        await save({
+          access: Object.fromEntries(T.map(([k]) => [k, f.get(`acc_${k}`) === "on"])),
+          blocklist: String(f.get("blocklist") || "").split("\n").map((x) => x.trim()).filter(Boolean),
+          retentionDays: Math.min(30, Math.max(1, Number(f.get("retentionDays")) || 3)),
+        });
+        Native.serviceSync();
+        setTimeout(paint, 600);
+      } },
+        h("h3", {}, "Apa yang Asbab boleh baca"),
+        h("p", { class: "muted" }, "Semua yang dibaca hanya DATA. Asbab tak pernah balas mesej, hantar, berbelanja atau bertindak dalam app lain. App bank, e-wallet, pengurus kata laluan dan OTP tak pernah dibaca dari skrin, dan mesej yang mengandungi kod OTP/TAC tak disimpan."),
+        ...T.map(([k, label, note]) => h("label", { class: "toggle" }, h("span", {}, label, note ? h("span", { class: "muted", style: { display: "block" } }, note) : null), h("input", { type: "checkbox", name: `acc_${k}`, checked: !!cur.access[k] }))),
+        field("Orang atau kumpulan yang Asbab tak boleh baca (satu baris satu)", "blocklist", { tag: "textarea", rows: 4, value: (cur.blocklist || []).join("\n") }),
+        field("Padam data mentah selepas berapa hari (1 hingga 30)", "retentionDays", { type: "number", value: cur.retentionDays || 3 }),
+        h("div", { class: "row" }, h("button", { class: "btn utama", type: "submit" }, "Simpan")));
+      box.replaceChildren(
+        h("div", { class: "panel stack" },
+          h("div", { class: "row" },
+            h("h3", { style: { flex: 1 } }, st.paused ? "Asbab dijeda" : "Asbab aktif"),
+            h("button", { class: st.paused ? "btn utama" : "btn bahaya", onclick: async () => { await Native.setPaused(!st.paused); buzz(25); paint(); } }, st.paused ? "Sambung Asbab" : "Jeda Asbab")),
+          h("p", { class: "muted" }, st.paused ? "Tiada apa yang dibaca sekarang." : `Data mentah: ${st.ingestTotal} item (${st.ingestWaiting} menunggu disusun oleh otak kedua, paling kerap sejam sekali).`),
+          st.ingestTotal ? h("button", { class: "btn", onclick: async () => { if (confirm("Padam semua data mentah sekarang? Catatan yang dah disusun kekal.")) { await Native.ingestClear(); paint(); } } }, "Padam data mentah sekarang") : null),
+        form,
+        h("h3", {}, "Kebenaran Android"),
+        card(st.notificationListener, "Akses notifikasi", "Perlu untuk membaca notifikasi WhatsApp, email, SMS dan bank.", "notificationListener"),
+        card(st.accessibility, "Kebolehcapaian (teks skrin)", "Pilihan. Cari \"Asbab: baca teks skrin\" dan hidupkan. Juga perlu untuk pintasan kunci skrin pada butang bulan.", "accessibility"),
+        card(st.usage, "Akses penggunaan", "Untuk ringkasan penggunaan app harian. Pilih Asbab dan benarkan.", "usage"),
+        card(st.overlay, "Papar di atas app lain", "Untuk butang bulan terapung (Fasa 4).", "overlay"),
+        h("div", { class: "panel stack" }, h("h3", {}, "Bateri"),
+          h("p", { class: "muted" }, "Supaya Asbab tak ditutup oleh telefon: Tetapan Android > Apps > Asbab > Bateri > Tiada sekatan. Panduan untuk Xiaomi, Oppo, Vivo dan Samsung ada dalam Tetapan > Bila Asbab Bersuara."),
+          h("button", { class: "btn", onclick: () => Native.openSettings("battery") }, "Tetapan bateri")));
+    };
+    paint();
+    Native.onResume?.(() => { if (box.isConnected) paint(); });
     return box;
   }
 

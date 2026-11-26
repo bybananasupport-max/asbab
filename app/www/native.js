@@ -26,28 +26,38 @@
     window.open(url, "_blank", "noopener");
   }
 
-  // Ask GitHub for the newest release and compare with the installed version.
-  // token is optional (needed while the repo is private; stored safely from Phase 3).
-  async function checkUpdate(token = "") {
-    const info = await appInfo();
-    const headers = { accept: "application/vnd.github+json" };
-    if (token) headers.authorization = `Bearer ${token}`;
-    let r;
-    try {
-      r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers, cache: "no-store" });
-    } catch {
-      return { ok: false, current: info.version, message: "Tak dapat hubungi GitHub. Semak internet dan cuba lagi." };
+  // GitHub API through the native plugin (the token stays in Kotlin). Returns {status, data, message}.
+  async function github(method, path, body) {
+    if (Asbab) {
+      const r = await Asbab.github({ method, path, body: body == null ? undefined : JSON.stringify(body) });
+      let data = null;
+      try { data = r.body ? JSON.parse(r.body) : null; } catch { data = r.body; }
+      return { status: r.status, data, message: r.message || "" };
     }
+    try {
+      const r = await fetch(`https://api.github.com${path}`, { method, headers: { accept: "application/vnd.github+json" }, body: body == null ? undefined : JSON.stringify(body) });
+      return { status: r.status, data: await r.json().catch(() => null), message: r.ok ? "" : `GitHub membalas ralat ${r.status}.` };
+    } catch {
+      return { status: 0, data: null, message: "Tak dapat hubungi GitHub. Semak internet dan cuba lagi." };
+    }
+  }
+
+  // Ask GitHub for the newest release and compare with the installed version.
+  async function checkUpdate() {
+    const info = await appInfo();
+    const keys = await secretStatus();
+    const r = await github("GET", `/repos/${REPO}/releases/latest`);
+    if (r.status === 0) return { ok: false, current: info.version, message: r.message };
     if (r.status === 404 || r.status === 401 || r.status === 403) {
       return {
-        ok: false, current: info.version, needToken: !token,
-        message: token
-          ? "GitHub tolak token ni, atau belum ada Release lagi."
-          : "Repo Asbab private, jadi semakan automatik perlukan token GitHub (akan dipasang dalam Fasa 3). Buka halaman Release untuk semak sendiri.",
+        ok: false, current: info.version, needToken: !keys.github,
+        message: keys.github
+          ? "Token GitHub tiada akses ke repo Asbab, atau belum ada Release lagi. Pastikan token boleh baca repo bybananasupport-max/asbab."
+          : "Repo Asbab private, jadi semakan automatik perlukan token GitHub. Tampal token dalam Tetapan > Sambungan & API, atau buka halaman Release untuk semak sendiri.",
       };
     }
-    if (!r.ok) return { ok: false, current: info.version, message: `GitHub membalas ralat ${r.status}.` };
-    return { ok: true, ...Core.updateInfo(info.version, await r.json()) };
+    if (r.status < 200 || r.status > 299) return { ok: false, current: info.version, message: r.message || `GitHub membalas ralat ${r.status}.` };
+    return { ok: true, ...Core.updateInfo(info.version, r.data) };
   }
 
   // Back button: go back in Asbab's own pages, and leave the app only from the main chat.
@@ -113,7 +123,36 @@
     });
   }
 
+  /* ---------- Phase 3: keys, second brain, phone access ---------- */
+
+  async function secretStatus() {
+    if (!Asbab) return { claude: false, github: false, backup: false };
+    return Asbab.secretStatus();
+  }
+  // Saving an empty value deletes the key. The key itself is never read back into the UI.
+  const secretSet = (name, value) => Asbab ? Asbab.secretSet({ name, value }) : Promise.reject(new Error("Hanya dalam app Android."));
+  const testClaude = (model) => Asbab ? Asbab.testClaude({ model }) : Promise.resolve({ ok: false, detail: "Hanya dalam app Android." });
+  const testGithub = () => Asbab ? Asbab.testGithub() : Promise.resolve({ ok: false, detail: "Hanya dalam app Android." });
+
+  // Streams Claude's answer; onText receives the text so far.
+  async function claude({ system, prompt, model, maxTokens = 1200 }, onText) {
+    if (!Asbab) throw new Error("Otak kedua hanya berfungsi dalam app Android.");
+    const id = Math.random().toString(36).slice(2);
+    const sub = await Asbab.addListener("claudeDelta", (e) => { if (e.id === id) onText?.(e.text); });
+    try {
+      return (await Asbab.claudeStream({ id, system, prompt, model, maxTokens })).text;
+    } finally {
+      sub.remove();
+    }
+  }
+
+  const accessStatus = async () => (Asbab ? Asbab.accessStatus() : { browser: true });
+  const setPaused = (paused) => Asbab?.setPaused({ paused });
+  const serviceSync = () => Asbab?.serviceSync().catch(() => {});
+  const ingestClear = () => Asbab?.ingestClear();
+
   window.Native = {
+    github, secretStatus, secretSet, testClaude, testGithub, claude, accessStatus, setPaused, serviceSync, ingestClear,
     isNative, appInfo, openUrl, checkUpdate, releasesUrl: `https://github.com/${REPO}/releases`,
     openStore, prayerTimes, reschedule, status, requestNotifications, openSettings, testBilal, takeRoute,
     canListen, listen,
