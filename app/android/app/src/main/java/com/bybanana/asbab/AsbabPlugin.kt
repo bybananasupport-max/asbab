@@ -246,7 +246,7 @@ class AsbabPlugin : Plugin() {
 
     /* ---------- Phase 5.1: several AI providers (Gemini, Claude, OpenAI) ---------- */
 
-    private fun errObj(e: AiError) = JSObject().put("ok", false).put("detail", e.message).put("raw", e.detail)
+    private fun errObj(e: com.bybanana.asbab.core.AiError) = JSObject().put("ok", false).put("detail", e.message).put("raw", e.detail)
 
     /**
      * Models this key can use, plus the ones Asbab would pick for Chat and Coding (and the fastest "lite" one).
