@@ -287,6 +287,61 @@ class AsbabPlugin : Plugin() {
         }
     }
 
+    /* ---------- Phase 5: website monitoring and backup ---------- */
+
+    /** Starts/stops website monitoring and the daily backup to match the data. */
+    @PluginMethod
+    fun workSync(call: PluginCall) {
+        Scheduler.async {
+            try { Works.sync(context) } catch (e: Exception) { android.util.Log.e("Asbab", "works", e) }
+            call.resolve()
+        }
+    }
+
+    /** Checks every watched website now (also runs by itself every 15 minutes). */
+    @PluginMethod
+    fun checkSites(call: PluginCall) {
+        net.execute {
+            Sites.checkAll(context)
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun backupNow(call: PluginCall) {
+        net.execute {
+            val r = Backups.run(context)
+            call.resolve(JSObject().put("ok", r.ok).put("message", r.message))
+        }
+    }
+
+    @PluginMethod
+    fun backupStatus(call: PluginCall) {
+        val last = db.get("_backup:last")?.let { JSObject(it) }
+        call.resolve(JSObject().put("last", last))
+    }
+
+    /** Shares a text file (manual export) through Android's share sheet. */
+    @PluginMethod
+    fun shareFile(call: PluginCall) {
+        val name = (call.getString("name") ?: "asbab.json").replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val text = call.getString("text") ?: return call.reject("text diperlukan")
+        try {
+            val dir = java.io.File(context.cacheDir, "share").apply { mkdirs() }
+            val f = java.io.File(dir, name).apply { writeText(text) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            activity.startActivity(Intent.createChooser(send, "Simpan atau kongsi backup Asbab"))
+            call.resolve()
+        } catch (e: Exception) {
+            call.reject("Tak dapat kongsi fail: ${e.message}")
+        }
+    }
+
     /* ---------- voice input (Bahasa Melayu) ---------- */
 
     @PluginMethod

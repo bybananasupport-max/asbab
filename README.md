@@ -29,7 +29,7 @@ web-reference/          versi web lama. Rujukan sahaja, jangan deploy.
 | 2 | Ciri tempatan tanpa AI: otak sendiri, waktu solat JAKIM, Mod Bilal, peringatan, suara | siap |
 | 3 | Otak kedua (Claude), akses telefon (notifikasi, skrin, penggunaan app), Jeda Asbab | PR |
 | 4 | Butang bulan terapung di atas app lain | PR |
-| 5 | Medan Graviti project, project kod GitHub, pantau website, backup | belum |
+| 5 | Medan Graviti project, project kod GitHub, pantau website, backup | PR |
 
 ## Cara dapatkan dan pasang APK
 

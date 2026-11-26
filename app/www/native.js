@@ -155,7 +155,26 @@
   const serviceSync = () => Asbab?.serviceSync().catch(() => {});
   const ingestClear = () => Asbab?.ingestClear();
 
+  /* ---------- Phase 5: website monitoring, backup, sharing ---------- */
+  let workTimer = null;
+  function workSync() {
+    if (!Asbab) return;
+    clearTimeout(workTimer);
+    workTimer = setTimeout(() => Asbab.workSync().catch(() => {}), 800);
+  }
+  const checkSites = () => (Asbab ? Asbab.checkSites() : Promise.resolve());
+  const backupNow = () => (Asbab ? Asbab.backupNow() : Promise.resolve({ ok: false, message: "Hanya dalam app Android." }));
+  const backupStatus = async () => (Asbab ? (await Asbab.backupStatus()).last : null);
+  async function shareFile(name, text) {
+    if (Asbab) return Asbab.shareFile({ name, text });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    a.download = name;
+    a.click();
+  }
+
   window.Native = {
+    workSync, checkSites, backupNow, backupStatus, shareFile,
     github, secretStatus, secretSet, testClaude, testGithub, claude, accessStatus, setPaused, serviceSync, ingestClear,
     isNative, appInfo, openUrl, checkUpdate, releasesUrl: `https://github.com/${REPO}/releases`,
     openStore, prayerTimes, reschedule, status, requestNotifications, openSettings, testBilal, takeRoute, rememberRoute, bubbleSync,

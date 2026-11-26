@@ -6,10 +6,10 @@
 // Claude arrives in Phase 3 and GitHub in Phase 5.
 (function (root, factory) {
   const req = typeof require === "function" ? require : null;
-  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"), root.SecondBrain || req("./secondbrain.js"));
+  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"), root.SecondBrain || req("./secondbrain.js"), root.GitHubApi || req("./github.js"));
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LocalApi = api;
-})(typeof self !== "undefined" ? self : this, function (Core, Brain, SecondBrain) {
+})(typeof self !== "undefined" ? self : this, function (Core, Brain, SecondBrain, GitHubApi) {
   const { nowMY, addDays, uid, DEFAULT_SETTINGS, SCENES, NOTE_KINDS } = Core;
   const MAIN_ROOM = "utama";
 
@@ -28,7 +28,9 @@
     store, version = "0.1.0-dev", clock = () => new Date(),
     prayerTimes = async () => null, onChange = () => {},
     secrets = async () => ({ claude: false, github: false }),
+    githubRequest = async () => ({ status: 0, data: null, message: "GitHub belum disambung." }),
   }) {
+    const git = GitHubApi.createGitHub(githubRequest);
     const { get, put, del, keys } = store;
     const now = () => nowMY(clock());
 
@@ -271,12 +273,15 @@
           list.push(np);
           await put("projects", list);
           await createRoom(np.name, { id: `p-${np.id}`, project: np.id });
+          changed();
           return { project: np };
         }
         if (method === "PATCH" && p && !c) {
           for (const f of ["name", "type", "repo", "branch", "url", "orbit", "archived"]) if (f in body) p[f] = body[f];
           p.born = false;
+          if ("url" in body) p.status = null;
           await put("projects", list);
+          changed();
           return { project: p };
         }
         if (method === "DELETE" && p && !c) {
@@ -284,10 +289,90 @@
           await put("rooms", (await rooms()).filter((r) => r.id !== `p-${b}`));
           await del(`msgs:p-${b}`);
           await del(`proposal:${b}`);
+          changed();
           return { ok: true };
         }
+        // ---------- Code projects (GitHub). Nothing changes in a repo before Amin holds-to-approve. ----------
+        const needRepo = async () => {
+          if (!(await keys0()).github) throw new ApiError("Token GitHub belum disimpan. Tampal dalam Tetapan > Sambungan & API.");
+          if (!GitHubApi.cleanRepo(p.repo)) throw new ApiError("Project ni belum ada repo GitHub yang sah (contoh: username/nama-repo). Tetapkan dalam Butiran.");
+          return GitHubApi.cleanRepo(p.repo);
+        };
+        const branch = p.branch || "main";
+        if (c === "files" && method === "GET") return { files: await git.tree(await needRepo(), branch) };
+        if (c === "read" && method === "POST") {
+          const repo = await needRepo();
+          const out = [];
+          let total = 0;
+          for (const path of (body.paths || []).slice(0, 15)) {
+            const clean = GitHubApi.cleanPath(path);
+            if (!clean) continue;
+            const f = await git.read(repo, branch, clean);
+            if (!f.exists || f.tooBig) continue;
+            total += f.content.length;
+            if (total > 120000) break;
+            out.push({ path: clean, content: f.content });
+          }
+          return { files: out };
+        }
         if (c === "proposal" && method === "GET") return { proposal: await get(`proposal:${b}`, null) };
-        if (c) throw new ApiError("Project kod (GitHub) akan disambung dalam Fasa 5.");
+        if (c === "proposal" && method === "POST") {
+          const repo = await needRepo();
+          const files = [];
+          for (const f of (body.files || []).slice(0, 30)) {
+            const clean = GitHubApi.cleanPath(f.path);
+            if (!clean) continue;
+            const orig = await git.read(repo, branch, clean);
+            files.push({ path: clean, content: String(f.content), original: orig.content, exists: orig.exists });
+          }
+          if (!files.length) throw new ApiError("Cadangan tiada fail yang sah.");
+          const proposal = {
+            id: uid(), task: String(body.task || ""), summary: String(body.summary || "Perubahan project").slice(0, 200),
+            risk: ["rendah", "sederhana", "tinggi"].includes(body.risk) ? body.risk : "sederhana",
+            explain: String(body.explain || ""), files, status: "menunggu", ts: Date.now(),
+          };
+          await put(`proposal:${b}`, proposal);
+          p.pending = true;
+          await put("projects", list);
+          await addMessage(`p-${b}`, { role: "asbab", ai: true, text: `Cadangan sedia: ${proposal.summary}`, card: "proposal" });
+          return { proposal };
+        }
+        if (c === "approve" && method === "POST") {
+          const repo = await needRepo();
+          const prop = await get(`proposal:${b}`, null);
+          if (!prop || prop.status !== "menunggu") throw new ApiError("Tiada cadangan yang menunggu kelulusan.");
+          const result = await git.commit(repo, branch, prop.files.map((f) => ({ path: f.path, content: f.content })), String(body.message || `Asbab: ${prop.summary}`).slice(0, 300));
+          prop.status = "lulus";
+          prop.commit = result;
+          await put(`proposal:${b}`, prop);
+          p.pending = false;
+          p.lastDeploy = Date.now();
+          await put("projects", list);
+          await devlog(`${p.name}: ${prop.summary} (${result.sha.slice(0, 7)})`);
+          await addMessage(`p-${b}`, { role: "asbab", ai: false, text: `Dah naik. Commit ${result.sha.slice(0, 7)}. Kalau ada masalah, tekan Patah balik.` });
+          return { proposal: prop, commit: result };
+        }
+        if (c === "reject" && method === "POST") {
+          const prop = await get(`proposal:${b}`, null);
+          if (prop) { prop.status = "ditolak"; await put(`proposal:${b}`, prop); }
+          p.pending = false;
+          await put("projects", list);
+          await addMessage(`p-${b}`, { role: "asbab", ai: false, text: "Cadangan ditolak. Tiada apa yang diubah." });
+          return { ok: true };
+        }
+        if (c === "revert" && method === "POST") {
+          const repo = await needRepo();
+          const prop = await get(`proposal:${b}`, null);
+          if (!prop || prop.status !== "lulus") throw new ApiError("Tiada perubahan yang boleh dipatah balik.");
+          const files = prop.files.map((f) => (f.exists ? { path: f.path, content: f.original } : { path: f.path, delete: true }));
+          const result = await git.commit(repo, branch, files, `Asbab: patah balik "${prop.summary}"`);
+          prop.status = "dipulihkan";
+          prop.revert = result;
+          await put(`proposal:${b}`, prop);
+          await devlog(`${p.name}: patah balik "${prop.summary}" (${result.sha.slice(0, 7)})`);
+          await addMessage(`p-${b}`, { role: "asbab", ai: false, text: "Dah patah balik ke versi sebelum perubahan." });
+          return { proposal: prop };
+        }
       }
 
       if (a === "test" && method === "GET") {
@@ -299,7 +384,8 @@
       if (a === "export" && method === "GET") {
         const out = {};
         for (const k of await keys("")) {
-          if (k.startsWith("prayer:") || k.startsWith("sent:")) continue;
+          // Caches, reminder bookkeeping and raw data from other apps never go into a backup.
+          if (/^(prayer:|sent:|proactive:|_|ingest$)/.test(k)) continue;
           out[k] = await get(k);
         }
         return { asbab: "identiti", version, exportedAt: new Date().toISOString(), data: out };

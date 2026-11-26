@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import Store from "../www/store.js";
 import LocalApi from "../www/localapi.js";
+import { fakeGitHub } from "./fakegithub.js";
 
 let api, store;
 const clock = () => new Date("2026-11-25T04:00:00Z"); // 12:00 in Malaysia
@@ -109,9 +110,9 @@ describe("projects", () => {
     expect((await api("bootstrap")).rooms.find((r) => r.id === `p-${project.id}`)).toBeUndefined();
   });
 
-  it("does not pretend GitHub works yet", async () => {
+  it("explains what is missing before touching GitHub", async () => {
     const { project } = await api("projects", { method: "POST", body: { name: "X" } });
-    await expect(api(`projects/${project.id}/files`)).rejects.toThrow("Fasa 5");
+    await expect(api(`projects/${project.id}/files`)).rejects.toThrow("Token GitHub belum disimpan");
   });
 });
 
@@ -195,5 +196,54 @@ describe("second brain (phase 3)", () => {
     await a("settings", { method: "PUT", body: { aiEnabled: false } });
     d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan lain" } });
     expect(d.messages[0].text).toContain("mod tanpa AI");
+  });
+});
+
+describe("code projects (phase 5)", () => {
+  it("proposal -> hold-to-approve commit -> patah balik", async () => {
+    const gh = fakeGitHub({ "index.html": "<footer></footer>\n" });
+    const a = LocalApi.createLocalApi({ store, clock, secrets: async () => ({ claude: true, github: true }), githubRequest: gh.request });
+    const { project } = await a("projects", { method: "POST", body: { name: "Milo", type: "kod", repo: "bybanana/milo" } });
+    const id = project.id;
+    expect((await a(`projects/${id}/files`)).files.map((f) => f.path)).toEqual(["index.html"]);
+    expect((await a(`projects/${id}/read`, { method: "POST", body: { paths: ["index.html", "../x"] } })).files).toHaveLength(1);
+
+    const { proposal } = await a(`projects/${id}/proposal`, { method: "POST", body: {
+      task: "tambah butang WhatsApp", summary: "Butang WhatsApp di footer", risk: "rendah", explain: "Tambah satu pautan.",
+      files: [{ path: "index.html", content: "<footer><a>WhatsApp</a></footer>\n" }, { path: "../hack", content: "x" }],
+    } });
+    expect(proposal.files).toHaveLength(1);
+    expect(proposal.files[0]).toMatchObject({ exists: true, original: "<footer></footer>\n" });
+    expect(gh.repo.files["index.html"]).toBe("<footer></footer>\n"); // nothing changes before approval
+    expect((await a("projects")).projects[0].pending).toBe(true);
+
+    const ok = await a(`projects/${id}/approve`, { method: "POST" });
+    expect(ok.proposal.status).toBe("lulus");
+    expect(gh.repo.files["index.html"]).toContain("WhatsApp");
+    await expect(a(`projects/${id}/approve`, { method: "POST" })).rejects.toThrow("Tiada cadangan");
+
+    await a(`projects/${id}/revert`, { method: "POST" });
+    expect(gh.repo.files["index.html"]).toBe("<footer></footer>\n");
+    expect(gh.repo.commits).toEqual(["Asbab: Butang WhatsApp di footer", 'Asbab: patah balik "Butang WhatsApp di footer"']);
+  });
+
+  it("rejecting changes nothing", async () => {
+    const gh = fakeGitHub({ "a.txt": "1\n" });
+    const a = LocalApi.createLocalApi({ store, clock, secrets: async () => ({ claude: true, github: true }), githubRequest: gh.request });
+    const { project } = await a("projects", { method: "POST", body: { name: "R", type: "kod", repo: "u/r" } });
+    await a(`projects/${project.id}/proposal`, { method: "POST", body: { files: [{ path: "a.txt", content: "2\n" }] } });
+    await a(`projects/${project.id}/reject`, { method: "POST" });
+    expect(gh.repo.files["a.txt"]).toBe("1\n");
+    expect(gh.repo.commits).toEqual([]);
+  });
+
+  it("backups leave out caches and raw data", async () => {
+    await store.put("prayer:KDH01:2026-11-25", {});
+    await store.put("ingest", [{ text: "rahsia" }]);
+    await store.put("_paused", true);
+    await api("notes", { method: "POST", body: { title: "simpan" } });
+    const { data } = await api("export");
+    expect(Object.keys(data)).toContain("notes");
+    expect(Object.keys(data).some((k) => k.startsWith("prayer:") || k === "ingest" || k.startsWith("_"))).toBe(false);
   });
 });

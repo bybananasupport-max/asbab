@@ -34,6 +34,7 @@ class BootReceiver : BroadcastReceiver() {
             try { Scheduler.reschedule(app) } finally { done.finish() }
         }
         AsbabService.refresh(app)
+        try { Works.sync(app) } catch (e: Exception) {}
     }
 }
 

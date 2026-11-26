@@ -199,8 +199,9 @@
       buzz(12);
       const p = n.p;
       const list = [
-        ["Ruang kerja", () => dive(n.el, p)],
-        ...(p.pending ? [["Cadangan menunggu", () => dive(n.el, p), "#e8706a"]] : []),
+        ["Chat", () => dive(n.el, p)],
+        ...(p.type === "kod" ? [[p.pending ? "Cadangan menunggu" : "Cadangan", () => dive(n.el, p), p.pending ? "#e8706a" : null]] : []),
+        ["Nota", () => projectNotes(p)],
         ["Butiran", () => editProject(p)],
         [p.archived ? "Keluar arkib" : "Arkib", async () => { await A.api(`projects/${p.id}`, { method: "PATCH", body: { archived: !p.archived } }); route(); }],
         ...(p.url ? [["Buka website", () => Native.openUrl(p.url)]] : []),
@@ -278,6 +279,20 @@
     requestAnimationFrame(step);
   }
 
+  // Notes that mention this project, plus a quick way to add one.
+  async function projectNotes(p) {
+    const { notes: all } = await A.api("notes");
+    const key = p.name.toLowerCase();
+    const mine = all.filter((n) => `${n.title} ${n.text}`.toLowerCase().includes(key)).slice(-30).reverse();
+    const sheet = h("div", { class: "sheet stack", role: "dialog", "aria-label": `Nota ${p.name}` },
+      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, `Nota: ${p.name}`), h("button", { class: "btn", onclick: () => sheet.remove() }, "Tutup")),
+      mine.length ? h("div", { style: { maxHeight: "40vh", overflowY: "auto" } }, ...mine.map(noteRow)) : h("p", { class: "muted" }, "Belum ada nota yang menyebut project ini."),
+      h("button", { class: "btn utama", onclick: () => { sheet.remove(); sheetForm(`Nota baru: ${p.name}`, [field("Nota", "text", { tag: "textarea", rows: 3 })], async (d) => {
+        await A.api("notes", { method: "POST", body: { kind: "nota", title: `${p.name}: ${String(d.text).split("\n")[0].slice(0, 80)}`, text: d.text } });
+      }); } }, "Tambah nota"));
+    document.body.append(sheet);
+  }
+
   function dive(el, p) {
     buzz(15);
     const r = el.getBoundingClientRect();
@@ -297,7 +312,7 @@
       field("Jenis", "type", { tag: "select", value: "biasa", options: [["biasa", "Biasa (chat dan nota)"], ["kod", "Kod (repo GitHub, Asbab boleh ubah kod)"]] }),
       field("Repo GitHub (untuk project kod)", "repo", { placeholder: "username/nama-repo" }),
       field("Branch", "branch", { value: "main" }),
-      field("Alamat website untuk dipantau 24 jam (pilihan)", "url", { type: "url", placeholder: "https://contoh.com" }),
+      field("Alamat website untuk dipantau setiap 15 minit (pilihan)", "url", { type: "url", placeholder: "https://contoh.com" }),
     ], async (d) => {
       await A.api("projects", { method: "POST", body: d });
       A.boot = await A.api("bootstrap");
@@ -320,6 +335,7 @@
       p.status === "down" ? h("span", { class: "badge tinggi" }, "website down") : p.status === "ok" ? h("span", { class: "badge rendah" }, "website ok") : null);
     const tools = h("div", { class: "row" },
       h("button", { class: "btn", onclick: () => editProject(p) }, "Butiran"),
+      p.url ? h("button", { class: "btn", onclick: async (e) => { e.target.textContent = "Menyemak…"; await Native.checkSites(); route(); } }, "Semak website") : null,
       h("button", { class: "btn", onclick: async () => { await A.api(`projects/${p.id}`, { method: "PATCH", body: { archived: !p.archived } }); location.hash = "#/project"; } }, p.archived ? "Keluarkan dari arkib" : "Arkib"),
       h("button", { class: "btn bahaya", onclick: async () => { if (!confirm(`Padam project "${p.name}"? Repo GitHub tak terjejas.`)) return; await A.api(`projects/${p.id}`, { method: "DELETE" }); location.hash = "#/project"; } }, "Padam"));
     const work = h("div", { id: "work", class: "stack" });
@@ -350,7 +366,8 @@
   }
 
   async function proposeChange(p, task, work) {
-    if (!A.boot.ai) { work.prepend(h("div", { class: "panel err" }, "ANTHROPIC_API_KEY belum diset, jadi Asbab belum boleh mengubah kod.")); return; }
+    if (!A.boot.ai) { work.prepend(h("div", { class: "panel err" }, "Key Claude belum disimpan (Tetapan > Sambungan & API), jadi Asbab belum boleh mengubah kod.")); return; }
+    if (!A.boot.github) { work.prepend(h("div", { class: "panel err" }, "Token GitHub belum disimpan (Tetapan > Sambungan & API), jadi Asbab belum boleh membaca repo.")); return; }
     const box = $("#msgs");
     box?.append(h("div", { class: "msg user baru-user" }, task));
     const status = h("p", { class: "muted" }, "Asbab sedang meneliti repo…");
@@ -424,8 +441,8 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
         h("h3", {}, `Dah naik: ${pr.summary}`),
         h("p", { class: "muted" }, `Commit ${pr.commit.sha.slice(0, 7)}. Semak website kau. Kalau ada masalah, patah balik.`),
         h("div", { class: "row" },
-          h("a", { class: "btn", href: pr.commit.url, target: "_blank", rel: "noopener" }, "Lihat commit"),
-          p.url ? h("a", { class: "btn", href: p.url, target: "_blank", rel: "noopener" }, "Buka website") : null,
+          h("button", { class: "btn", onclick: () => Native.openUrl(pr.commit.url) }, "Lihat commit"),
+          p.url ? h("button", { class: "btn", onclick: () => Native.openUrl(p.url) }, "Buka website") : null,
           h("button", { class: "btn bahaya", onclick: async (e) => {
             if (!confirm("Patah balik ke versi sebelum perubahan ni?")) return;
             e.target.closest(".panel").classList.add("putar-balik");
@@ -659,7 +676,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       personaliti: s.personality.slice(0, 60) + "…",
       akses: `${["whatsapp", "email", "sms_bank", "skrin", "penggunaan_app"].filter((k) => s.access[k]).length} daripada 5 suis hidup`,
       butang: s.bubble ? "Terapung di atas app lain" : "Dalam Asbab sahaja",
-      data: "Backup identiti dan pulihkan",
+      data: s.backupRepo ? `Backup harian ke ${s.backupRepo}` : "Backup belum ditetapkan",
       keselamatan: "Kunci cap jari/PIN: akan datang",
       tentang: `Versi ${A.boot.version}`,
     }[id];
@@ -747,20 +764,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
 
       butang: () => butangPage(s, save),
 
-      data: () => h("div", { class: "panel stack" },
-        h("p", { class: "muted" }, "Semua nota, chat, tetapan dan personaliti Asbab dalam satu fail. Backup automatik yang disulitkan ke repo GitHub peribadi datang dalam Fasa 5."),
-        h("div", { class: "row" },
-          h("button", { class: "btn", onclick: async (e) => {
-            const d = await A.api("export");
-            try { await navigator.clipboard.writeText(JSON.stringify(d)); e.target.textContent = "Disalin ke clipboard"; }
-            catch { alert("Tak dapat salin ke clipboard."); }
-          } }, "Salin backup ke clipboard"),
-          h("label", { class: "btn" }, "Pulihkan dari fail", h("input", { type: "file", accept: "application/json,.json", hidden: true, onchange: async (e) => {
-            const file = e.target.files[0]; if (!file) return;
-            if (!confirm("Pulihkan akan menulis semula data sedia ada. Teruskan?")) return;
-            try { const r = await A.api("import", { method: "POST", body: JSON.parse(await file.text()) }); alert(`Dipulihkan: ${r.count} rekod.`); location.reload(); }
-            catch (err) { alert(err.message); }
-          } })))),
+      data: () => dataPage(s, save),
 
       keselamatan: () => h("div", { class: "panel stack" },
         h("p", { class: "muted" }, "Asbab tiada password lagi. Kunci dengan cap jari atau PIN telefon akan ditambah dalam fasa akan datang. Semua data disimpan dalam telefon ini sahaja.")),
@@ -866,6 +870,86 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
             } }, "Padam") : null),
           res);
       }), h("p", { class: "muted" }, "Key disimpan dalam telefon ini sahaja, disulitkan dengan Android Keystore. Ia tak pernah dipaparkan semula, tak masuk ke backup, dan tak masuk ke repo."));
+    };
+    paint();
+    return box;
+  }
+
+  /* ---------- Data & Backup (Phase 5) ---------- */
+  function dataPage(s, save) {
+    const box = h("div", { class: "stack" });
+    const restore = async (file) => {
+      let plain = file;
+      if (Backup.isEncrypted(file)) {
+        const pass = prompt("Frasa laluan backup?");
+        if (!pass) return;
+        plain = await Backup.decrypt(file, pass);
+      }
+      if (!confirm("Pulihkan akan menulis semula data sedia ada dengan data dalam backup. Teruskan?")) return;
+      const r = await A.api("import", { method: "POST", body: plain });
+      alert(`Dipulihkan: ${r.count} rekod.`);
+      location.reload();
+    };
+    const paint = async () => {
+      const keys = await Native.secretStatus();
+      const last = await Native.backupStatus();
+      const cur = A.boot.settings;
+      const res = h("p", { class: "muted", role: "status" });
+      const repoIn = h("input", { value: cur.backupRepo || "", placeholder: "username/asbab-backup", "aria-label": "Repo backup" });
+      const passIn = h("input", { type: "password", placeholder: keys.backup ? "•••••••• (disimpan). Tampal baharu untuk tukar" : "Frasa laluan, sekurang-kurangnya 8 aksara", autocomplete: "new-password", "aria-label": "Frasa laluan backup" });
+      box.replaceChildren(
+        h("div", { class: "panel stack" },
+          h("h3", {}, h("span", { class: `lampu${last && last.ok ? " ok" : ""}` }), "Backup automatik harian (disulitkan)"),
+          h("p", { class: "muted" }, "Setiap hari, semua catatan, chat, tetapan dan personaliti disulitkan dalam telefon, kemudian disimpan dalam repo GitHub Private kau (folder asbab-backup). Tanpa frasa laluan, fail itu tak boleh dibaca sesiapa. Key, token dan data mentah daripada app lain tak dimasukkan."),
+          h("label", { class: "f" }, "Repo GitHub Private untuk backup", repoIn),
+          h("label", { class: "f" }, "Frasa laluan backup (simpan di tempat selamat: tanpanya backup tak boleh dipulihkan)", passIn),
+          h("div", { class: "row" },
+            h("button", { class: "btn utama", onclick: async () => {
+              try {
+                const repo = repoIn.value.trim();
+                if (repo && !GitHubApi.cleanRepo(repo)) throw new Error("Tulis repo dalam bentuk username/nama-repo.");
+                if (passIn.value) {
+                  if (passIn.value.length < 8) throw new Error("Frasa laluan mesti sekurang-kurangnya 8 aksara.");
+                  await Native.secretSet("backup", passIn.value);
+                  passIn.value = "";
+                }
+                await save({ backupRepo: repo ? GitHubApi.cleanRepo(repo) : "" });
+                Native.workSync();
+                res.textContent = "Disimpan.";
+                setTimeout(paint, 600);
+              } catch (e) { res.className = "err"; res.textContent = e.message; }
+            } }, "Simpan"),
+            h("button", { class: "btn", disabled: !cur.backupRepo || !keys.backup || !keys.github, onclick: async () => {
+              res.className = "muted"; res.textContent = "Membuat backup…";
+              const r = await Native.backupNow();
+              res.className = r.ok ? "ok-teks" : "err"; res.textContent = r.message;
+            } }, "Backup sekarang")),
+          !keys.github ? h("p", { class: "muted" }, "Perlu token GitHub dalam Sambungan & API (kebenaran Contents: Read and write untuk repo backup).") : null,
+          last ? h("p", { class: last.ok ? "muted" : "err" }, `Kali terakhir: ${new Date(last.at).toLocaleString("ms-MY")} · ${last.message}`) : null,
+          res),
+        h("div", { class: "panel stack" },
+          h("h3", {}, "Eksport dan pulih manual"),
+          h("p", { class: "muted" }, "Eksport menghasilkan fail backup yang disulitkan dengan frasa laluan yang kau taip. Simpan di Drive, emel atau komputer."),
+          h("div", { class: "row" },
+            h("button", { class: "btn", onclick: async () => {
+              const pass = prompt("Frasa laluan untuk fail eksport (sekurang-kurangnya 8 aksara)?");
+              if (!pass) return;
+              try {
+                const file = await Backup.encrypt(await A.api("export"), pass);
+                await Native.shareFile(`asbab-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(file));
+              } catch (e) { alert(e.message); }
+            } }, "Eksport"),
+            h("label", { class: "btn" }, "Pulihkan dari fail", h("input", { type: "file", accept: "application/json,.json", hidden: true, onchange: async (e) => {
+              const f = e.target.files[0]; if (!f) return;
+              try { await restore(JSON.parse(await f.text())); } catch (err) { alert(err.message); }
+            } })),
+            h("button", { class: "btn", disabled: !cur.backupRepo || !keys.github, onclick: async () => {
+              try {
+                const r = await Native.github("GET", `/repos/${cur.backupRepo}/contents/asbab-backup/terkini.json`);
+                if (r.status !== 200) throw new Error(r.message || "Backup tak dijumpai dalam repo.");
+                await restore(JSON.parse(GitHubApi.b64decode(r.data.content)));
+              } catch (err) { alert(err.message); }
+            } }, "Pulihkan dari GitHub"))));
     };
     paint();
     return box;

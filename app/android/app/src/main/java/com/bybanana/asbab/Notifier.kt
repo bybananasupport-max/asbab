@@ -73,6 +73,21 @@ object Notifier {
         notify(context, id, b)
     }
 
+    /** Website down / recovered (Phase 5). */
+    fun showSite(context: Context, projectId: String, title: String, body: String) {
+        ensureChannels(context)
+        val id = idFor("site:$projectId")
+        val b = NotificationCompat.Builder(context, CH_REMIND)
+            .setSmallIcon(R.drawable.ic_stat_moon)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp(context, "#/project/$projectId", id))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+        notify(context, id, b)
+    }
+
     fun showTest(context: Context) {
         ensureChannels(context)
         val b = NotificationCompat.Builder(context, CH_BILAL)
