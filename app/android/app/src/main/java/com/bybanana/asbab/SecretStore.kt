@@ -19,7 +19,8 @@ object SecretStore {
     const val CLAUDE = "claude"
     const val GITHUB = "github"
     const val BACKUP = "backup"
-    val NAMES = setOf(CLAUDE, GITHUB, BACKUP)
+    // AI provider keys use the provider id (core/Ai.kt Providers): "gemini", "claude", "openai".
+    val NAMES get() = com.bybanana.asbab.core.Providers.IDS.toSet() + setOf(GITHUB, BACKUP)
 
     private const val ALIAS = "asbab_secrets_v1"
     private const val PREFS = "asbab_secret_store"

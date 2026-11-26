@@ -1,6 +1,7 @@
 package com.bybanana.asbab
 
 import android.content.Context
+import com.bybanana.asbab.core.AiUsage
 import com.bybanana.asbab.core.Ingested
 import com.bybanana.asbab.core.Jakim
 import com.bybanana.asbab.core.NewNote
@@ -117,12 +118,13 @@ class Repo(context: Context) {
 
     /* ---------- Phase 3: AI usage, pause, captured data ---------- */
 
-    fun usageToday(): Int = try { JSONObject(db.get("usage:${today()}") ?: "{}").optInt("count", 0) } catch (e: Exception) { 0 }
+    /** AI requests today, all providers together. */
+    fun usageToday(): Int = AiUsage.parse(db.get("usage:${today()}")).first
 
-    fun bumpUsage() = db.update("usage:${today()}") { raw ->
-        val o = try { JSONObject(raw ?: "{}") } catch (e: Exception) { JSONObject() }
-        o.put("count", o.optInt("count", 0) + 1).toString()
-    }
+    /** AI requests today for one provider (each provider has its own daily cap). */
+    fun usageFor(provider: String): Int = AiUsage.parse(db.get("usage:${today()}")).second[provider] ?: 0
+
+    fun bumpUsage(provider: String) = db.update("usage:${today()}") { raw -> AiUsage.bump(raw, provider) }
 
     /** "Jeda Asbab": when true, nothing is read from other apps. */
     var paused: Boolean

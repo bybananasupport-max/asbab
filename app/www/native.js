@@ -130,7 +130,7 @@
   /* ---------- Phase 3: keys, second brain, phone access ---------- */
 
   async function secretStatus() {
-    if (!Asbab) return { claude: false, github: false, backup: false };
+    if (!Asbab) return { gemini: false, claude: false, openai: false, github: false, backup: false };
     return Asbab.secretStatus();
   }
   // Saving an empty value deletes the key. The key itself is never read back into the UI.
@@ -149,6 +149,21 @@
       sub.remove();
     }
   }
+
+  // Phase 5.1: several providers. The router in Kotlin picks the provider for the role and falls back.
+  async function ai({ role = "chat", system, prompt, maxTokens }, onText) {
+    if (!Asbab) throw new Error("Otak kedua hanya berfungsi dalam app Android.");
+    const id = Math.random().toString(36).slice(2);
+    const sub = await Asbab.addListener("aiDelta", (e) => { if (e.id === id) onText?.(e.text); });
+    try {
+      return await Asbab.aiStream({ id, role, system, prompt, maxTokens });
+    } finally {
+      sub.remove();
+    }
+  }
+  const aiListModels = (provider) => (Asbab ? Asbab.aiListModels({ provider }) : Promise.reject(new Error("Hanya dalam app Android.")));
+  const aiTest = (provider, model) => (Asbab ? Asbab.aiTest({ provider, model }) : Promise.resolve({ ok: false, detail: "Hanya dalam app Android." }));
+  const aiUsage = async () => (Asbab ? Asbab.aiUsage() : { count: 0, by: {} });
 
   const accessStatus = async () => (Asbab ? Asbab.accessStatus() : { browser: true });
   const setPaused = (paused) => Asbab?.setPaused({ paused });
@@ -175,6 +190,7 @@
 
   window.Native = {
     workSync, checkSites, backupNow, backupStatus, shareFile,
+    ai, aiListModels, aiTest, aiUsage,
     github, secretStatus, secretSet, testClaude, testGithub, claude, accessStatus, setPaused, serviceSync, ingestClear,
     isNative, appInfo, openUrl, checkUpdate, releasesUrl: `https://github.com/${REPO}/releases`,
     openStore, prayerTimes, reschedule, status, requestNotifications, openSettings, testBilal, takeRoute, rememberRoute, bubbleSync,

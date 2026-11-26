@@ -244,6 +244,79 @@ class AsbabPlugin : Plugin() {
         }
     }
 
+    /* ---------- Phase 5.1: several AI providers (Gemini, Claude, OpenAI) ---------- */
+
+    /** Models this key can use, plus the ones Asbab would pick for Chat and Coding. */
+    @PluginMethod
+    fun aiListModels(call: PluginCall) {
+        val spec = com.bybanana.asbab.core.Providers.byId(call.getString("provider") ?: "") ?: return call.reject("Penyedia tak dikenali")
+        val key = SecretStore.get(context, spec.id) ?: return call.reject("${spec.label}: key belum disimpan.")
+        net.execute {
+            try {
+                val models = AiClient.listModels(spec, key).distinct().sorted()
+                call.resolve(JSObject().apply {
+                    put("models", JSArray().apply { models.forEach { put(it) } })
+                    put("chat", spec.pickDefault(models, "chat"))
+                    put("coding", spec.pickDefault(models, "coding"))
+                })
+            } catch (e: AiFailure) {
+                call.reject(e.error.message)
+            }
+        }
+    }
+
+    /** "Uji sambungan": a tiny request to the chosen model. */
+    @PluginMethod
+    fun aiTest(call: PluginCall) {
+        val spec = com.bybanana.asbab.core.Providers.byId(call.getString("provider") ?: "") ?: return call.reject("Penyedia tak dikenali")
+        val key = SecretStore.get(context, spec.id) ?: return call.resolve(JSObject().put("ok", false).put("detail", "Key ${spec.label} belum disimpan."))
+        val model = call.getString("model").orEmpty()
+        if (model.isBlank()) return call.resolve(JSObject().put("ok", false).put("detail", "Pilih model dulu (tekan \"Muat senarai model\")."))
+        net.execute {
+            try {
+                AiClient.complete(spec, key, model, "Balas dengan satu perkataan sahaja.", "Balas: ok", 64)
+                Repo(context).bumpUsage(spec.id)
+                call.resolve(JSObject().put("ok", true).put("detail", "Bersambung (model $model)."))
+            } catch (e: AiFailure) {
+                call.resolve(JSObject().put("ok", false).put("detail", e.error.message))
+            }
+        }
+    }
+
+    /**
+     * Second brain answer for a role ("chat" or "coding") with automatic fallback. Text arrives through
+     * "aiDelta" events ({id, text}); resolves {text, provider, label, model, fallback, failures}.
+     * Rejects with a plain-Malay message when every provider failed (the UI then answers with the own brain).
+     */
+    @PluginMethod
+    fun aiStream(call: PluginCall) {
+        val id = call.getString("id") ?: ""
+        val role = if (call.getString("role") == "coding") "coding" else "chat"
+        val system = call.getString("system") ?: ""
+        val prompt = call.getString("prompt") ?: return call.reject("prompt diperlukan")
+        val maxTokens = call.getInt("maxTokens") ?: if (role == "coding") 16_000 else 1_200
+        net.execute {
+            try {
+                val a = AiRouter.run(context, role, false, system, prompt, maxTokens) { soFar ->
+                    notifyListeners("aiDelta", JSObject().put("id", id).put("text", soFar))
+                }
+                call.resolve(JSObject().apply {
+                    put("text", a.text); put("provider", a.provider); put("label", a.label); put("model", a.model)
+                    put("fallback", a.fallback); put("failures", JSArray().apply { a.failures.forEach { put(it) } })
+                })
+            } catch (e: AiFailure) {
+                call.reject(e.error.message)
+            }
+        }
+    }
+
+    /** Today's usage per provider: {count, by: {gemini: n, ...}}. */
+    @PluginMethod
+    fun aiUsage(call: PluginCall) {
+        val (count, by) = com.bybanana.asbab.core.AiUsage.parse(db.get("usage:${Repo.today()}"))
+        call.resolve(JSObject().put("count", count).put("by", JSObject().apply { for ((k, v) in by) put(k, v) }))
+    }
+
     /* ---------- Phase 3: phone access ---------- */
 
     @PluginMethod

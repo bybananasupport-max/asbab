@@ -42,13 +42,17 @@ const buzz = (ms = 12) => navigator.vibrate?.(ms);
 // A.api is created in start() once the installed app version is known.
 const api = (...args) => A.api(...args);
 
-// Second brain (Claude), through the native plugin so the key never enters the web UI.
-// weight "light" = routine work, "heavy" = coding. Model names come from Tetapan > Otak Kedua.
-async function think({ system, prompt, weight = "light", maxTokens, model }, onText) {
-  const s = A.boot.settings;
-  return Native.claude({ system, prompt, model: model || (weight === "heavy" ? s.modelHeavy : s.modelLight), maxTokens: maxTokens || (weight === "heavy" ? 16000 : 1200) }, onText);
+// Second brain through the native router (keys never enter the web UI). weight "heavy" = the Coding role,
+// anything else = the Chat role. Providers, models and fallback order come from Tetapan > Sambungan & API.
+// Resolves with the text (string, as before); thinkFull() also says which AI answered.
+async function thinkFull({ system, prompt, weight = "light", role, maxTokens }, onText) {
+  return Native.ai({ role: role || (weight === "heavy" ? "coding" : "chat"), system, prompt, maxTokens }, onText);
+}
+async function think(opts, onText) {
+  return (await thinkFull(opts, onText)).text;
 }
 A.think = think;
+A.thinkFull = thinkFull;
 
 /* ---------- Start ---------- */
 async function start() {
@@ -205,7 +209,7 @@ function renderMessages(list, animateLast = false) {
 
 function msgEl(m, fresh = false) {
   const meta = [];
-  if (m.role === "asbab" && m.ai) meta.push("otak kedua");
+  if (m.role === "asbab" && m.ai) meta.push(Ai.label(m));
   if (m.role === "asbab" && m.ai === false) meta.push("otak sendiri");
   if (m.saved) meta.push(`${m.saved} disimpan ke Catatan`);
   if (m.proactive) meta.push("Asbab mulakan");
@@ -294,15 +298,25 @@ async function sendMessage(roomId, text, { allowAI = false, skipUser = false } =
       box?.append(big);
       const live = h("div", { class: "msg asbab" });
       let started = false;
-      const raw = await think({ ...d.context, model: d.model, weight: "light" }, (t) => {
-        if (!started) { big.remove(); box?.append(live); started = true; }
-        live.textContent = t.split("<<NOTA>>")[0];
-        $("#view").scrollTop = 1e9;
-      });
+      let answer;
+      try {
+        answer = await thinkFull({ ...d.context, role: d.role || "chat" }, (t) => {
+          if (!started) { big.remove(); box?.append(live); started = true; }
+          live.textContent = t.split("<<NOTA>>")[0];
+          $("#view").scrollTop = 1e9;
+        });
+      } catch (err) {
+        // Every provider failed or is out of quota: the own brain answers and explains simply.
+        big.remove(); live.remove();
+        const fb = await api("chat/fallback", { method: "POST", body: { roomId, text: err.message } });
+        box?.append(msgEl(fb.message, true));
+        return;
+      }
       big.remove();
-      const fin = await api("chat/finish", { method: "POST", body: { roomId, text: raw } });
+      const fin = await api("chat/finish", { method: "POST", body: { roomId, text: answer.text, provider: answer.provider, fallback: answer.fallback } });
       live.replaceWith(msgEl(fin.message, true));
-      A.boot.usage.count++;
+      A.boot.usage = fin.usage || A.boot.usage;
+      updateMoonState();
     }
   } catch (e) {
     thinking.remove();
@@ -408,7 +422,7 @@ function toggleRail() {
   const COL = { kod: "#6fc2b0", biasa: "#a99be0" };
   for (const p of (A.boot.projects || []).filter((x) => !x.archived).slice(-3).reverse())
     add(h("button", { class: "titik", "aria-label": `Project ${p.name}`, onclick: go(`#/project/${p.id}`) }, h("i", { style: { background: COL[p.type] || COL.biasa } }), p.pending || p.status === "down" ? h("b") : null));
-  const used = A.boot.usage?.count || 0, cap = A.boot.settings?.aiDailyCap || 1;
+  const used = A.boot.usage?.count || 0, cap = Ai.totalCap(A.boot.settings || {}, A.boot.aiKeys || {}) || 1;
   const f = Math.min(1, used / cap), C = 2 * Math.PI * 15;
   add(h("button", { class: "cincin-guna", "aria-label": `Otak kedua: ${used} daripada ${cap} hari ini`, onclick: go("#/tetapan/otak"), html: `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="15" stroke="rgba(255,255,255,.15)" stroke-width="3" fill="none"/><circle cx="20" cy="20" r="15" stroke="var(--aksen-2)" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="${C * f} ${C}" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" font-size="10" fill="currentColor" stroke="none">${used}</text></svg>` }));
   add(h("button", { class: `profil${here === "tetapan" ? " aktif" : ""}`, "aria-label": "Tetapan", onclick: go("#/tetapan") }, (A.boot.settings?.name || "A").slice(0, 1).toUpperCase()));
