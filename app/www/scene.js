@@ -122,7 +122,9 @@
         rc.beginPath(); rc.moveTo(x, y); rc.lineTo(x - 4, y + 16); rc.stroke();
       }
     }
-    requestAnimationFrame(tick);
+    // Moving effects off (default since Phase 5.2): redraw rarely instead of 60 times a second.
+    if (still) setTimeout(() => requestAnimationFrame(tick), 1500);
+    else requestAnimationFrame(tick);
   }
 
   function setScene(type) {

@@ -326,11 +326,12 @@ class AsbabPlugin : Plugin() {
         val system = call.getString("system") ?: ""
         val prompt = call.getString("prompt") ?: return call.reject("prompt diperlukan")
         val maxTokens = call.getInt("maxTokens") ?: if (role == "coding") 16_000 else 1_200
+        val prefer = call.getString("prefer")?.takeIf { it != "auto" }
         net.execute {
             try {
-                val a = AiRouter.run(context, role, false, system, prompt, maxTokens) { soFar ->
+                val a = AiRouter.run(context, role, false, system, prompt, maxTokens, { soFar ->
                     notifyListeners("aiDelta", JSObject().put("id", id).put("text", soFar))
-                }
+                }, prefer)
                 call.resolve(JSObject().apply {
                     put("text", a.text); put("provider", a.provider); put("label", a.label); put("model", a.model)
                     put("fallback", a.fallback); put("failures", JSArray().apply { a.failures.forEach { put(it) } })

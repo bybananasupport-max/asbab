@@ -80,23 +80,23 @@ Selain tu, aku guna otak kedua (Claude) untuk berbincang.`;
       if (m) {
         const kind = m[1].toLowerCase() === "idea" ? "idea" : "nota";
         const body = m[2].trim();
-        await deps.addNotes([{ kind, title: body.split("\n")[0].slice(0, 120), text: body }], "manual");
-        return { reply: kind === "idea" ? "Idea tu dah jadi bintang baru dalam Bank Idea." : "Dah simpan dalam Catatan.", saved: 1 };
+        const notes = await deps.addNotes([{ kind, title: body.split("\n")[0].slice(0, 120), text: body }], "manual");
+        return { reply: kind === "idea" ? "Idea tu dah jadi bintang baru dalam Bank Idea." : "Dah simpan dalam Catatan.", saved: 1, notes };
       }
 
       m = String(text).match(/^\s*makan\s*:\s*(.+)$/i);
       if (m) {
-        await deps.addNotes([{ kind: "makan", title: m[1].trim() }], "manual");
-        return { reply: `Direkod: makan ${m[1].trim()}.`, saved: 1 };
+        const notes = await deps.addNotes([{ kind: "makan", title: m[1].trim() }], "manual");
+        return { reply: `Direkod: makan ${m[1].trim()}.`, saved: 1, notes };
       }
 
       // "belanja RM12 nasi lemak", "bayar rm 1,250.00 sewa", "RM5 teh tarik"
       m = t.match(/^(?:belanja|beli|bayar)\s+(rm\s?[\d,]+(?:\.\d+)?)\s*(.*)$/) || t.match(/^(rm\s?[\d,]+(?:\.\d+)?)\s+(.+)$/);
       if (m && firstAmount(m[1]) != null) {
         const amount = firstAmount(m[1]);
-        await deps.addNotes([{ kind: "belanja", title: cap(m[2] || "Belanja"), amount }], "manual");
+        const notes = await deps.addNotes([{ kind: "belanja", title: cap(m[2] || "Belanja"), amount }], "manual");
         const total = sumBelanja(await deps.notes(), today, today);
-        return { reply: `Direkod ${rm(amount)}. Jumlah belanja hari ni: ${rm(total)}.`, saved: 1 };
+        return { reply: `Direkod ${rm(amount)}. Jumlah belanja hari ni: ${rm(total)}.`, saved: 1, notes };
       }
 
       if (/^(belanja|berapa (aku )?belanja)/.test(t)) {

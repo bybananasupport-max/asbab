@@ -151,12 +151,12 @@
   }
 
   // Phase 5.1: several providers. The router in Kotlin picks the provider for the role and falls back.
-  async function ai({ role = "chat", system, prompt, maxTokens }, onText) {
+  async function ai({ role = "chat", system, prompt, maxTokens, prefer = "auto" }, onText) {
     if (!Asbab) throw new Error("Otak kedua hanya berfungsi dalam app Android.");
     const id = Math.random().toString(36).slice(2);
     const sub = await Asbab.addListener("aiDelta", (e) => { if (e.id === id) onText?.(e.text); });
     try {
-      return await Asbab.aiStream({ id, role, system, prompt, maxTokens });
+      return await Asbab.aiStream({ id, role, system, prompt, maxTokens, prefer });
     } finally {
       sub.remove();
     }

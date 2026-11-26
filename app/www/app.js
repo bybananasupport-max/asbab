@@ -45,14 +45,77 @@ const api = (...args) => A.api(...args);
 // Second brain through the native router (keys never enter the web UI). weight "heavy" = the Coding role,
 // anything else = the Chat role. Providers, models and fallback order come from Tetapan > Sambungan & API.
 // Resolves with the text (string, as before); thinkFull() also says which AI answered.
-async function thinkFull({ system, prompt, weight = "light", role, maxTokens }, onText) {
-  return Native.ai({ role: role || (weight === "heavy" ? "coding" : "chat"), system, prompt, maxTokens }, onText);
+async function thinkFull({ system, prompt, weight = "light", role, maxTokens, prefer }, onText) {
+  return Native.ai({ role: role || (weight === "heavy" ? "coding" : "chat"), system, prompt, maxTokens, prefer }, onText);
 }
 async function think(opts, onText) {
   return (await thinkFull(opts, onText)).text;
 }
 A.think = think;
 A.thinkFull = thinkFull;
+
+/* ---------- Toast ("Disimpan", "Catatan dipadam" + Batal) ---------- */
+function toast(text, { action, ms = 3500 } = {}) {
+  document.querySelector(".toast")?.remove();
+  const t = h("div", { class: "toast", role: "status" }, h("span", {}, text),
+    action ? h("button", { class: "btn kecil", onclick: () => { t.remove(); action.fn(); } }, action.label) : null);
+  document.body.append(t);
+  requestAnimationFrame(() => t.classList.add("muncul"));
+  setTimeout(() => { t.classList.remove("muncul"); setTimeout(() => t.remove(), 300); }, ms);
+  return t;
+}
+A.toast = toast;
+
+/* ---------- Bottom sheet ---------- */
+function sheet(title, ...content) {
+  document.querySelector(".sheet")?.remove();
+  const close = () => s.remove();
+  const s = h("div", { class: "sheet stack", role: "dialog", "aria-label": title },
+    h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, title), h("button", { class: "btn", onclick: close }, "Tutup")), ...content);
+  s.close = close;
+  document.body.append(s);
+  return s;
+}
+A.sheet = sheet;
+
+/* ---------- Which AI answers in this chat room (Phase 5.2) ---------- */
+function aiPickerButton(room) {
+  const name = () => (room.ai && Ai.byId(room.ai) ? Ai.byId(room.ai).label : "Auto");
+  const btn = h("button", { class: "btn ai-pilih", "aria-label": "Pilih otak kedua untuk chat ini", onclick: async () => {
+    const keys = await Native.secretStatus();
+    const active = Ai.active(A.boot.settings, keys);
+    const pick = async (id) => {
+      await api(`rooms/${room.id}`, { method: "PATCH", body: { ai: id } });
+      room.ai = Ai.byId(id) ? id : "auto";
+      btn.textContent = `Otak: ${name()}`;
+      s.close();
+      toast(`Chat ini guna ${name()}`);
+    };
+    const row = (id, label, note) => h("button", { class: `pilihan${(room.ai || "auto") === id ? " dipilih" : ""}`, onclick: () => pick(id) },
+      h("strong", {}, label), note ? h("span", { class: "muted" }, note) : null);
+    const s = sheet("Otak kedua untuk chat ini",
+      row("auto", "Auto (ikut susunan sandaran)", Ai.active(A.boot.settings, keys).map((id) => Ai.byId(id).label).join(" → ") || "Tiada penyedia aktif"),
+      ...active.map((id) => row(id, Ai.byId(id).label, "Kalau gagal, Asbab cuba penyedia lain ikut susunan sandaran.")),
+      active.length ? null : h("p", { class: "muted" }, "Belum ada penyedia yang hidup dan ada key. Tetapkan dalam Tetapan > Sambungan & API."));
+  } }, `Otak: ${name()}`);
+  return btn;
+}
+
+/* ---------- Keyboard: hide the bottom bar, only the composer rises (Phase 5.2) ---------- */
+(function keyboardWatch() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  let base = window.innerHeight;
+  const update = () => {
+    if (window.innerHeight > base) base = window.innerHeight;
+    const hidden = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    const open = base - vv.height > 150;
+    document.body.classList.toggle("papan-kekunci", open);
+    document.documentElement.style.setProperty("--kb", hidden + "px");
+  };
+  vv.addEventListener("resize", update);
+  addEventListener("orientationchange", () => { base = 0; setTimeout(update, 300); });
+})();
 
 /* ---------- Start ---------- */
 async function start() {
@@ -123,7 +186,7 @@ function buildNav() {
 
 function route() {
   if (!A.boot) return;
-  const [, page, id] = location.hash.replace(/^#/, "").split("/");
+  const [, page, id, sub] = location.hash.replace(/^#/, "").split("/");
   const navId = { chat: "chat", "hari-ini": "hari", project: "project", catatan: "catatan", tetapan: "tetapan" }[page] || "chat";
   document.querySelectorAll("nav.bar a").forEach((a) => a.classList.toggle("aktif", a.dataset.id === navId));
   Native.rememberRoute(location.hash);
@@ -138,7 +201,7 @@ function route() {
   if (page === "hari-ini") return Views.today(view);
   if (page === "project" && id) return Views.project(view, id);
   if (page === "project") return Views.orbit(view);
-  if (page === "catatan") return Views.notes(view);
+  if (page === "catatan") return Views.notes(view, id, sub);
   if (page === "tetapan") return Views.settings(view, id);
   return renderChat(view, id || "utama");
 }
@@ -172,6 +235,7 @@ async function renderChat(view, roomId, opts = {}) {
       h("div", { id: "rooms", class: "rooms" }),
       h("div", { class: "chat-head" },
         h("h2", {}, room.name),
+        aiPickerButton(room),
         room.id !== "utama" ? h("button", { class: "btn", onclick: async () => {
           const name = prompt("Nama baharu?", room.name);
           if (!name) return;
@@ -216,7 +280,10 @@ function msgEl(m, fresh = false) {
   const el = h("div", { class: `msg ${m.role === "user" ? "user" : "asbab"}${fresh ? (m.role === "user" ? " baru-user" : " baru-asbab") : ""}` },
     m.text,
     meta.length || m.ts ? h("div", { class: "meta" }, m.ts ? new Date(m.ts).toLocaleTimeString("ms-MY", { hour: "2-digit", minute: "2-digit" }) : "", ...meta.map((x) => h("span", {}, x))) : null);
-  if (fresh && m.role !== "user") setTimeout(() => Scene.fireflies(el, 12), 30);
+  if (m.links && m.links.length) {
+    el.append(h("div", { class: "msg-pautan" }, ...m.links.map((l) => h("button", { class: "btn kecil", onclick: () => { location.hash = l.hash; } }, l.label))));
+  }
+  if (fresh && m.role !== "user" && !document.body.classList.contains("ringan")) setTimeout(() => Scene.fireflies(el, 12), 30);
   return el;
 }
 
@@ -230,7 +297,8 @@ function constellation(big) {
 }
 
 function composer(roomId, onSend) {
-  const ta = h("textarea", { rows: 1, placeholder: "Cakap dengan Asbab…", "aria-label": "Mesej", onkeydown: (e) => {
+  // Keyboard suggestions on (Phase 5.2): spellcheck, autocorrect, sentence capitals, autocomplete.
+  const ta = h("textarea", { rows: 1, placeholder: "Cakap dengan Asbab…", "aria-label": "Mesej", spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", autocomplete: "on", enterkeyhint: "send", onkeydown: (e) => {
     if (e.key === "Enter" && !e.shiftKey && innerWidth > 700) { e.preventDefault(); send(); }
   }, oninput: () => { ta.style.height = "auto"; ta.style.height = Math.min(140, ta.scrollHeight) + "px"; } });
   const send = async () => {
@@ -300,7 +368,7 @@ async function sendMessage(roomId, text, { allowAI = false, skipUser = false } =
       let started = false;
       let answer;
       try {
-        answer = await thinkFull({ ...d.context, role: d.role || "chat" }, (t) => {
+        answer = await thinkFull({ ...d.context, role: d.role || "chat", prefer: d.prefer }, (t) => {
           if (!started) { big.remove(); box?.append(live); started = true; }
           live.textContent = t.split("<<NOTA>>")[0];
           $("#view").scrollTop = 1e9;

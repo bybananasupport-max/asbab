@@ -246,3 +246,44 @@ describe("code projects (phase 5)", () => {
     expect(Object.keys(data).some((k) => k.startsWith("prayer:") || k === "ingest" || k.startsWith("_"))).toBe(false);
   });
 });
+
+describe("phase 5.2", () => {
+  it("each chat room can pick its own AI", async () => {
+    const a = LocalApi.createLocalApi({ store, clock, secrets: async () => ({ claude: true, openai: true }) });
+    await a("rooms/utama", { method: "PATCH", body: { ai: "openai" } });
+    let d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan baharu" } });
+    expect(d.prefer).toBe("openai");
+    await a("rooms/utama", { method: "PATCH", body: { ai: "bukan-ai" } });
+    d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan lain" } });
+    expect(d.prefer).toBe("auto");
+  });
+
+  it("puts buttons under messages that open what was saved", async () => {
+    let d = await api("chat", { method: "POST", body: { roomId: "utama", text: "belanja RM5 teh" } });
+    expect(d.messages[0].links).toEqual([{ label: "Lihat belanja", hash: "#/catatan/belanja" }]);
+    d = await api("chat", { method: "POST", body: { roomId: "utama", text: "nota: beli kopi" } });
+    expect(d.messages[0].links[0].label).toBe("Buka catatan");
+    expect(d.messages[0].links[0].hash).toMatch(/^#\/catatan\/semua\/.+/);
+    const a = LocalApi.createLocalApi({ store, clock, secrets: async () => ({ claude: true }) });
+    const r = await a("chat/finish", { method: "POST", body: { roomId: "utama", text: 'Ok\n<<NOTA>>[{"kind":"jadual","title":"Kelas","time":"09:00"}]', provider: "claude" } });
+    expect(r.message.links[0].label).toBe("Lihat jadual");
+  });
+
+  it("edits a note, deletes it and undoes the delete", async () => {
+    const { added: [n] } = await api("notes", { method: "POST", body: { kind: "belanja", title: "Teh", amount: 2 } });
+    const { note } = await api(`notes/${n.id}`, { method: "PATCH", body: { title: "Teh tarik", amount: "3.5" } });
+    expect(note).toMatchObject({ title: "Teh tarik", amount: 3.5 });
+    const del = await api(`notes/${n.id}`, { method: "DELETE" });
+    expect((await api("notes")).notes).toHaveLength(0);
+    await api("notes/restore", { method: "POST", body: { note: del.note } });
+    expect((await api("notes")).notes.map((x) => x.id)).toEqual([n.id]);
+  });
+
+  it("turns moving background effects off once for existing installs", async () => {
+    await store.put("settings", { animations: "penuh" });
+    const b = await api("bootstrap");
+    expect(b.settings.animations).toBe("ringan");
+    await api("settings", { method: "PUT", body: { animations: "penuh" } });
+    expect((await api("bootstrap")).settings.animations).toBe("penuh"); // Amin's later choice is kept
+  });
+});

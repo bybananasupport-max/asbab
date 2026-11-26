@@ -112,6 +112,19 @@
       await put("devlog", list.slice(0, 300));
     }
     const projects = () => get("projects", []);
+
+    // Buttons under a message that open what Asbab just saved (Phase 5.2).
+    function linksFor(saved) {
+      const out = [];
+      const add = (label, hash) => { if (!out.some((l) => l.hash === hash)) out.push({ label, hash }); };
+      for (const n of saved || []) {
+        if (n.kind === "belanja") add("Lihat belanja", "#/catatan/belanja");
+        else if (n.kind === "jadual") add("Lihat jadual", `#/catatan/jadual/${n.id}`);
+        else if (n.kind === "idea") add("Buka idea", `#/catatan/idea/${n.id}`);
+        else add("Buka catatan", `#/catatan/semua/${n.id}`);
+      }
+      return out.slice(0, 3);
+    }
     const changed = () => { try { onChange("schedule"); } catch { /* reminders are best effort */ } };
     const prayer = (zone, date) => Promise.resolve(prayerTimes(zone, date)).catch(() => null);
 
@@ -129,6 +142,12 @@
         if (last !== version) {
           await put("version", version);
           await devlog(last ? `Asbab dinaik taraf ke versi ${version}.` : `Asbab dilahirkan dalam telefon, versi ${version}.`);
+        }
+        // Phase 5.2: moving background effects become OFF by default, once, for existing installs too.
+        if (!s.ui52) {
+          s.animations = "ringan";
+          s.ui52 = true;
+          await put("settings", s);
         }
         return {
           version, settings: s, rooms: await rooms(), projects: await projects(),
@@ -148,6 +167,7 @@
           const list = await rooms();
           const r = list.find((x) => x.id === b);
           if (r && body.name) r.name = String(body.name).slice(0, 60);
+          if (r && "ai" in body) r.ai = Ai.byId(body.ai) ? body.ai : "auto"; // per-room AI choice (Phase 5.2)
           await put("rooms", list);
           return { room: r };
         }
@@ -171,7 +191,7 @@
         const local = await localBrain(text, { settings: s, room });
         if (local) {
           if (local.saved) changed();
-          const msg = await addMessage(roomId, { role: "asbab", text: local.reply, ai: false, saved: local.saved || 0 });
+          const msg = await addMessage(roomId, { role: "asbab", text: local.reply, ai: false, saved: local.saved || 0, links: linksFor(local.notes || []) });
           return { user, messages: [msg], navigate: local.navigate || null };
         }
         // Second brain (Gemini, Claude or OpenAI), only when allowed.
@@ -186,7 +206,7 @@
           return { user, messages: [msg] };
         }
         const usage = await usageToday();
-        if (!Ai.chain(s, "chat", { keys: k, used: usage.by || {} }).length) {
+        if (!Ai.chain(s, "chat", { keys: k, used: usage.by || {}, prefer: room.ai }).length) {
           const msg = await addMessage(roomId, { role: "asbab", ai: false, text: "Had harian semua otak kedua dah habis hari ni. Aku masih boleh jawab apa yang ada dalam catatan." });
           return { user, messages: [msg] };
         }
@@ -197,7 +217,7 @@
           settings: s, now: n, prayer: await prayer(s.zone, n.date), notes: await notes(),
           history: (await messages(roomId)).slice(0, -1), project,
         });
-        return { user, needAI: true, context, role: "chat" };
+        return { user, needAI: true, context, role: "chat", prefer: room.ai || "auto" };
       }
 
       if (a === "chat" && b === "finish" && method === "POST") {
@@ -206,7 +226,7 @@
         const saved = found.length ? await addNotes(found, "asbab") : [];
         if (saved.length) changed();
         const provider = Ai.byId(body.provider) ? body.provider : "";
-        const message = await addMessage(roomId, { role: "asbab", text: reply, ai: true, provider, fallback: !!body.fallback, saved: saved.length });
+        const message = await addMessage(roomId, { role: "asbab", text: reply, ai: true, provider, fallback: !!body.fallback, saved: saved.length, links: linksFor(saved) });
         return { message, saved, usage: await usageToday() };
       }
 
@@ -245,15 +265,39 @@
 
       if (a === "notes") {
         if (method === "GET") return { notes: await notes(), devlog: await get("devlog", []) };
-        if (method === "POST") {
+        if (method === "POST" && !b) {
           const added = await addNotes([body], "manual");
           changed();
           return { added };
         }
         if (method === "DELETE" && b) {
-          await put("notes", (await notes()).filter((x) => x.id !== b));
+          const list = await notes();
+          const gone = list.find((x) => x.id === b) || null;
+          await put("notes", list.filter((x) => x.id !== b));
           changed();
-          return { ok: true };
+          return { ok: true, note: gone };
+        }
+        // Edit a note (Phase 5.2).
+        if (method === "PATCH" && b) {
+          const list = await notes();
+          const n = list.find((x) => x.id === b);
+          if (!n) throw new ApiError("Catatan tak wujud.", 404);
+          for (const f of ["title", "text", "date", "time"]) if (f in body) n[f] = String(body[f] || "").slice(0, f === "text" ? 2000 : 200);
+          if ("kind" in body && NOTE_KINDS.includes(body.kind)) n.kind = body.kind;
+          if ("amount" in body) { const a = Number(body.amount); n.amount = body.amount === "" || !Number.isFinite(a) ? undefined : a; }
+          await put("notes", list);
+          changed();
+          return { note: n };
+        }
+        // "Batal" after deleting: put the same note back.
+        if (method === "POST" && b === "restore") {
+          const n = body.note;
+          if (!n || !n.id || !n.title) throw new ApiError("Tiada catatan untuk dipulihkan.");
+          const list = await notes();
+          if (!list.some((x) => x.id === n.id)) list.push(n);
+          await put("notes", list);
+          changed();
+          return { note: n };
         }
       }
 

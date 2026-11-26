@@ -51,10 +51,12 @@
   }
 
   // Providers to try for a role, same rules as AiConfig.chain in Kotlin.
-  function chain(s, role, { personal = false, keys = {}, used = {} } = {}) {
+  // prefer = a provider chosen for one chat room ("auto" or empty = the role's provider).
+  function chain(s, role, { personal = false, keys = {}, used = {}, prefer = "" } = {}) {
     if (s.aiEnabled === false) return [];
     const c = config(s);
-    const ids = [c.roles[role], ...c.order, ...IDS].filter((id, i, a) => id && a.indexOf(id) === i);
+    const first = byId(prefer) ? prefer : c.roles[role];
+    const ids = [first, ...c.order, ...IDS].filter((id, i, a) => id && a.indexOf(id) === i);
     return ids.filter((id) => {
       const p = c.providers[id];
       return p && p.on && keys[id] && (used[id] || 0) < p.cap && (!personal || p.personal);
@@ -81,5 +83,12 @@
     return IDS.filter((id) => c.providers[id].on && keys[id]).reduce((a, id) => a + c.providers[id].cap, 0);
   }
 
-  return { PROVIDERS, IDS, DEFAULT_ORDER, byId, config, chain, ready, label, totalCap };
+  // Providers that can answer right now (switched on and have a key), for the chat's AI picker.
+  function active(s, keys = {}) {
+    if (s.aiEnabled === false) return [];
+    const c = config(s);
+    return [...c.order, ...IDS].filter((id, i, a) => a.indexOf(id) === i && c.providers[id].on && keys[id]);
+  }
+
+  return { PROVIDERS, IDS, DEFAULT_ORDER, byId, config, chain, ready, label, totalCap, active };
 });

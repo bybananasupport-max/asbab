@@ -188,4 +188,12 @@ class AiTest {
         assertEquals("gemini-4.0-flash-lite-preview", GeminiSpec.pickLite(listOf("gemini-4.0-flash-lite-preview", "gemini-3.5-flash")))
         assertNull(GeminiSpec.pickLite(listOf("gemini-3.5-flash")))
     }
+
+    @Test
+    fun roomCanPreferAProvider() {
+        val cfg = AiConfig.from(JSONObject("""{"ai":{"providers":{"gemini":{"chatModel":"g"},"openai":{"chatModel":"o"}}}}"""))
+        assertEquals(listOf("openai", "gemini", "claude"), cfg.chain("chat", false, { true }, { 0 }, "openai"))
+        assertEquals(listOf("gemini", "claude", "openai"), cfg.chain("chat", false, { true }, { 0 }, "auto"))
+        assertEquals(listOf("gemini", "claude", "openai"), cfg.chain("chat", false, { true }, { 0 }, null))
+    }
 }

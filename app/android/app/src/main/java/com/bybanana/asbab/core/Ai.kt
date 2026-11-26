@@ -371,9 +371,10 @@ data class AiConfig(
      * Only providers that are switched on, have a key, are under their own daily cap, and (for data read from
      * other apps) allow personal notifications.
      */
-    fun chain(role: String, personal: Boolean, hasKey: (String) -> Boolean, used: (String) -> Int): List<String> {
+    fun chain(role: String, personal: Boolean, hasKey: (String) -> Boolean, used: (String) -> Int, prefer: String? = null): List<String> {
         if (!enabled) return emptyList()
-        val first = roles[role]
+        // A chat room can pick its own provider (Phase 5.2); "auto" or null = the role's provider.
+        val first = prefer?.takeIf { Providers.byId(it) != null } ?: roles[role]
         val ids = (listOfNotNull(first) + order + Providers.IDS).distinct()
         return ids.filter { id ->
             val p = providers[id] ?: return@filter false

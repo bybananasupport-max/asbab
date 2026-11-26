@@ -139,11 +139,11 @@ object AiRouter {
      */
     fun run(
         context: Context, role: String, personal: Boolean, system: String, prompt: String, maxTokens: Int,
-        onText: ((String) -> Unit)?,
+        onText: ((String) -> Unit)?, prefer: String? = null,
     ): Answer {
         val repo = Repo(context)
         val cfg = config(context)
-        val chain = cfg.chain(role, personal, { hasKey(context, it) }, { repo.usageFor(it) })
+        val chain = cfg.chain(role, personal, { hasKey(context, it) }, { repo.usageFor(it) }, prefer)
         val failures = mutableListOf<String>()
         for ((i, id) in chain.withIndex()) {
             val spec = Providers.byId(id) ?: continue
