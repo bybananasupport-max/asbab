@@ -25,24 +25,77 @@
     : h("input", { name, type: attrs.type || "text", value: attrs.value ?? "", placeholder: attrs.placeholder || "", required: attrs.required, step: attrs.step }));
 
   /* ================= HARI INI ================= */
+  // Hari Ini (Phase 6): greeting, countdown ring to the next prayer, next schedule with a live
+  // countdown, two-column stat cards, week strip.
   async function today(view) {
     Scene.setScene("bukit");
-    const wrap = h("div", { class: "wrap stack" }, h("p", { class: "muted" }, "Memuat hari kau…"));
+    const wrap = h("div", { class: "wrap stack" }, A.topbar("Hari Ini"),
+      h("div", { class: "rangka", style: { height: "180px" } }), h("div", { class: "grid2" }, h("div", { class: "rangka", style: { height: "112px" } }), h("div", { class: "rangka", style: { height: "112px" } })));
     view.append(wrap);
     let t, all;
     try { [t, { notes: all }] = await Promise.all([A.api("today"), A.api("notes")]); A.today = t; }
-    catch (e) { wrap.replaceChildren(h("p", { class: "err" }, e.message)); return; }
+    catch (e) { wrap.replaceChildren(A.topbar("Hari Ini"), h("p", { class: "err" }, e.message)); return; }
     const pt = t.prayer;
     const hr = new Date().getHours();
     const salam = hr < 11 ? "Selamat pagi" : hr < 14 ? "Selamat tengah hari" : hr < 19 ? "Selamat petang" : "Selamat malam";
     wrap.replaceChildren(
-      h("div", { class: "salam" }, h("h1", {}, `${salam}, ${A.boot.settings.name}`), h("p", { class: "muted" }, `${t.now.hari}, ${t.now.date}${pt?.hijri ? " · " + pt.hijri : ""}`)),
-      pt ? h("div", { class: "hero stack" }, bilal(pt), solatGrid(t))
-        : h("div", { class: "panel" }, `Waktu solat JAKIM (zon ${A.boot.settings.zone}) belum dapat diambil. Semak internet, atau semak kod zon dalam Tetapan > Profil.`),
+      A.topbar("Hari Ini"),
+      h("div", {}, h("h2", {}, `${salam}, ${A.boot.settings.name}`), h("p", { class: "muted" }, `${t.now.hari}, ${t.now.date}${pt?.hijri ? " · " + pt.hijri : ""}`)),
+      pt ? h("div", { class: "kad kuat stack" }, solatRing(pt), solatGrid(t))
+        : h("div", { class: "kad" }, `Waktu solat JAKIM (zon ${A.boot.settings.zone}) belum dapat diambil. Semak internet, atau semak kod zon dalam Tetapan > Profil.`),
+      nextScheduleCard(t, all),
       statGrid(t, all),
       weekCard(all, t.now.date));
     clearInterval(today.timer);
-    today.timer = setInterval(() => { const b = $("#bilal"); if (b && pt && location.hash === "#/hari-ini") b.replaceWith(bilal(pt)); }, 30000);
+    today.timer = setInterval(() => {
+      if (location.hash !== "#/hari-ini") return clearInterval(today.timer);
+      const ring = $("#cincin-solat"); if (ring && pt) ring.replaceWith(solatRing(pt));
+      tickCountdowns();
+    }, 1000);
+  }
+
+  // Ring that fills from the previous prayer to the next one.
+  function solatRing(pt) {
+    const nx = nextPrayer(pt);
+    const m = nowMin();
+    const times = WAKTU.map(([k]) => toMin(pt[k]));
+    const prev = [...times].reverse().find((x) => x <= m) ?? (times[4] - 1440);
+    const span = Math.max(1, (nx.left + m) - prev);
+    const f = Math.min(1, Math.max(0, (m - prev) / span));
+    const R = 56, C = 2 * Math.PI * R;
+    const lead = A.boot.settings.bilalLead;
+    const left = nx.left >= 60 ? `${Math.floor(nx.left / 60)}j ${nx.left % 60}m` : `${nx.left} minit`;
+    return h("div", { id: "cincin-solat", class: "solat-hero" },
+      h("div", { class: "cincin-solat", html: `<svg viewBox="0 0 132 132"><circle class="trek" cx="66" cy="66" r="${R}"/><circle class="isi" cx="66" cy="66" r="${R}" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - f)}"/></svg>` },
+        h("div", { class: "tengah" }, h("small", {}, "lagi"), h("strong", {}, left))),
+      h("div", { class: "stack", style: { gap: "4px" } },
+        h("span", { class: "muted" }, nx.left <= lead ? "Mod Bilal: masa bersiap" : "Solat seterusnya"),
+        h("strong", { style: { fontSize: "1.6rem" } }, nx.n),
+        h("span", {}, nx.time),
+        nx.left <= lead ? h("span", { class: "muted" }, "Dah mandi dan ambil wuduk?") : null));
+  }
+
+  // The next schedule item today (or tomorrow) with a small live countdown in the bottom-right corner.
+  function nextScheduleCard(t, all) {
+    const now = new Date();
+    const items = all.filter((n) => n.kind === "jadual" && n.time && n.date >= t.now.date)
+      .map((n) => ({ n, at: new Date(`${n.date}T${n.time}:00`) })).filter((x) => x.at > now).sort((a, b) => a.at - b.at);
+    const next = items[0];
+    if (!next) return h("button", { class: "kad", style: { textAlign: "left", color: "inherit", font: "inherit" }, onclick: () => addJadual() },
+      h("span", { class: "muted" }, "Jadual seterusnya"), h("p", {}, "Tiada jadual akan datang. Tekan untuk tambah."));
+    return h("button", { class: "kad kad-jadual", style: { textAlign: "left", color: "inherit", font: "inherit", width: "100%" }, onclick: () => { location.hash = `#/catatan/jadual/${next.n.id}`; } },
+      h("span", { class: "muted" }, "Jadual seterusnya"),
+      h("h3", {}, next.n.title),
+      h("span", { class: "muted" }, `${next.n.date === t.now.date ? "Hari ini" : next.n.date} · ${next.n.time}`),
+      h("span", { class: "kira", "data-sampai": String(next.at.getTime()) }, countdown(next.at.getTime())));
+  }
+  const pad2 = (n) => String(n).padStart(2, "0");
+  function countdown(ms) {
+    const d = Math.max(0, Math.floor((ms - Date.now()) / 1000));
+    return `${d >= 86400 ? Math.floor(d / 86400) + "h " : ""}${pad2(Math.floor(d / 3600) % 24)}:${pad2(Math.floor(d / 60) % 60)}:${pad2(d % 60)}`;
+  }
+  function tickCountdowns() {
+    document.querySelectorAll("[data-sampai]").forEach((el) => { el.textContent = countdown(Number(el.dataset.sampai)); });
   }
 
   function nextPrayer(pt) {
@@ -50,23 +103,6 @@
     for (const [k, n] of WAKTU) if (toMin(pt[k]) > m) return { k, n, time: pt[k], left: toMin(pt[k]) - m };
     const tm = A.today.prayerTomorrow || pt;
     return { k: "fajr", n: "Subuh esok", time: tm.fajr, left: 1440 - m + toMin(tm.fajr) };
-  }
-
-  function bilal(pt) {
-    const nx = nextPrayer(pt);
-    const lead = A.boot.settings.bilalLead;
-    const angle = Math.max(-70, Math.min(70, (nx.left / 180) * 70 - 10));
-    const siap = nx.left <= lead;
-    return h("div", { id: "bilal", class: "menara" },
-      h("div", { html: `<svg viewBox="0 0 120 90" aria-hidden="true">
-        <path class="bayang" style="transform:rotate(${angle}deg)" d="M26 80 L34 80 L60 86 L4 86 Z"/>
-        <g class="bangunan"><rect x="25" y="30" width="10" height="50"/><path d="M23 30 L30 14 L37 30 Z"/><circle cx="30" cy="11" r="2"/>
-        <rect x="45" y="55" width="60" height="25"/><path d="M50 55 Q75 30 100 55 Z"/></g></svg>` }),
-      h("div", {},
-        h("p", { class: "muted" }, siap ? "Mod Bilal: masa bersiap" : "Solat seterusnya"),
-        h("div", { class: "count" }, nx.n),
-        h("p", {}, `${nx.time} · lagi ${nx.left >= 60 ? `${Math.floor(nx.left / 60)} jam ${nx.left % 60} minit` : `${nx.left} minit`}`),
-        siap ? h("p", { class: "muted" }, "Dah mandi dan ambil wuduk?") : null));
   }
 
   function solatGrid(t) {
@@ -96,29 +132,30 @@
       field("Apa", "title", { required: true, placeholder: "Kelas English Skills" }),
       field("Tarikh", "date", { type: "date", value: date || todayISO(), required: true }),
       field("Masa", "time", { type: "time" }),
-    ], async (d) => { await A.api("notes", { method: "POST", body: { ...d, kind: "jadual" } }); route(); });
+    ], async (d) => { await A.api("notes", { method: "POST", body: { ...d, kind: "jadual" } }); A.toast("Disimpan"); route(); });
   }
   function addBelanja() {
     sheetForm("Rekod belanja", [
       field("Jumlah (RM)", "amount", { type: "number", step: "0.01", required: true }),
       field("Untuk apa", "title", { required: true, placeholder: "Nasi lemak" }),
-    ], async (d) => { await A.api("notes", { method: "POST", body: { ...d, kind: "belanja", amount: Number(d.amount) } }); route(); });
+    ], async (d) => { const r = await A.api("notes", { method: "POST", body: { ...d, kind: "belanja", amount: Number(d.amount) } }); A.toast(r.budget || "Disimpan"); route(); });
   }
 
+  // Two-column stat cards.
   function statGrid(t, all) {
-    const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return isoDay(d); });
-    const belanja7 = days.map((d) => all.filter((n) => n.kind === "belanja" && n.date === d).reduce((a, n) => a + (n.amount || 0), 0));
-    const next = t.jadual.find((j) => !j.time || toMin(j.time) >= nowMin());
     const used = A.boot.usage.count, cap = Ai.totalCap(A.boot.settings, A.boot.aiKeys || {});
     const sites = A.boot.projects.filter((p) => p.url && !p.archived);
     const down = sites.filter((p) => p.status === "down").length;
-    const card = (label, nilai, extra, onclick, html) => h("button", { class: "gcard", style: { textAlign: "left", color: "inherit" }, onclick },
-      h("span", { class: "label" }, label), h("span", { class: "nilai" }, nilai), extra ? h("span", { class: "label" }, extra) : null, html ? h("div", { html, style: { marginTop: "auto" } }) : null);
-    return h("div", { class: "stat-grid" },
-      card("Belanja hari ini", rm(t.belanjaTotal), "Tekan untuk rekod", addBelanja, spark(belanja7)),
-      card("Jadual hari ini", String(t.jadual.length), next ? `Seterusnya: ${next.time || ""} ${next.title}` : "Tekan untuk tambah", () => addJadual()),
-      card("Otak kedua", `${used}/${cap}`, "kali digunakan hari ini", () => (location.hash = "#/tetapan/otak")),
-      card("Website", sites.length ? (down ? `${down} down` : "Semua ok") : "–", sites.length ? `${sites.length} dipantau` : "Tambah alamat dalam project", () => (location.hash = "#/project")));
+    const had = Number(A.boot.settings.belanjaHad?.harian) || 0;
+    const card = (label, nilai, extra, onclick, frac) => h("button", { class: "kad kad-stat", onclick },
+      h("span", { class: "label" }, label), h("span", { class: "nilai" }, nilai), extra ? h("span", { class: "label" }, extra) : null,
+      frac != null ? h("span", { class: "bar" }, h("i", { style: { width: Math.min(100, frac * 100) + "%", background: frac >= 1 ? "#ff8787" : "" } })) : null);
+    const left = t.jadual.filter((j) => !j.time || toMin(j.time) >= nowMin()).length;
+    return h("div", { class: "grid2" },
+      card("Belanja hari ini", rm(t.belanjaTotal), had ? `had ${rm(had)}` : "Tekan untuk rekod", addBelanja, had ? t.belanjaTotal / had : null),
+      card("Jadual hari ini", String(t.jadual.length), `${left} lagi`, () => addJadual()),
+      card("Otak kedua", `${used}`, cap ? `daripada ${cap} hari ini` : "belum disambung", () => (location.hash = "#/tetapan/sambungan"), cap ? used / cap : null),
+      card("Website", sites.length ? (down ? `${down} down` : "Semua ok") : "–", sites.length ? `${sites.length} dipantau` : "Tambah dalam project", () => (location.hash = "#/project")));
   }
 
   function weekCard(all, todayDate) {
@@ -140,8 +177,8 @@
       return h("button", { "data-d": iso, class: iso === todayDate ? "hari-ini" : "", onclick: () => { sel = iso; paint(); buzz(6); } }, NAMA[i], h("strong", {}, d.getDate()), ada ? h("i") : null);
     }));
     paint();
-    return h("div", { class: "panel stack" },
-      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Minggu ini"), h("button", { class: "btn", onclick: () => addJadual(sel) }, "Tambah")),
+    return h("div", { class: "kad stack" },
+      h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Minggu ini"), h("button", { class: "btn kecil", onclick: () => addJadual(sel) }, "Tambah")),
       strip, list);
   }
 
@@ -154,11 +191,28 @@
     A.boot.projects = projects;
     const listMode = localStorage.getItem("asbab:orbitList") === "1";
     const wrap = h("div", { class: "wrap stack" },
-      h("div", { class: "row" }, h("h1", { style: { flex: 1 } }, "Project"),
-        h("button", { class: "btn", onclick: () => { localStorage.setItem("asbab:orbitList", listMode ? "0" : "1"); route(); } }, listMode ? "Medan" : "Senarai"),
-        h("button", { class: "btn utama", onclick: newProject }, "Project baru")));
+      A.topbar("Project",
+        h("button", { class: "btn kecil", onclick: () => { localStorage.setItem("asbab:orbitList", listMode ? "0" : "1"); route(); } }, listMode ? "Medan" : "Senarai"),
+        h("button", { class: "ikon-btn", "aria-label": "Project baru", html: ICON.plus, onclick: newProject })));
     view.append(wrap);
-    if (!projects.length) { wrap.append(h("div", { class: "panel" }, "Medan masih kosong. Tambah project pertama kau, contohnya Milogamingstore atau AI ROOM.")); return; }
+    if (!projects.length) { wrap.append(h("div", { class: "kad" }, "Medan masih kosong. Tekan + untuk tambah project pertama kau, contohnya Milogamingstore atau AI ROOM.")); return; }
+    // Phase 6 (minimal, full redesign in Phase 7): waiting-for-approval strip, status cards, recent activity.
+    const waiting = projects.filter((p) => p.pending && !p.archived);
+    if (waiting.length) wrap.append(h("a", { class: "jalur-lulus", href: `#/project/${waiting[0].id}` }, h("b"),
+      h("span", { style: { flex: 1 } }, waiting.length === 1 ? `${waiting[0].name}: cadangan menunggu kelulusan kau` : `${waiting.length} cadangan menunggu kelulusan kau`), h("span", { class: "anak", html: ICON.kanan })));
+    const statusCards = () => h("div", { class: "grid2" }, ...projects.filter((p) => !p.archived).map((p) => h("a", { class: "kad kad-stat", href: `#/project/${p.id}`, style: { textDecoration: "none" } },
+      h("span", { class: "label" }, p.type === "kod" ? "project kod" : "project biasa"),
+      h("strong", {}, p.name),
+      h("span", { class: "label", style: { color: p.status === "down" ? "#ff8787" : "" } }, p.pending ? "menunggu kelulusan" : p.url ? (p.status === "down" ? "website down" : p.status === "ok" ? "website ok" : "website belum disemak") : "tiada website"))));
+    const activity = async () => {
+      const { devlog } = await A.api("notes");
+      const names = projects.map((p) => p.name);
+      const rows = devlog.filter((d) => names.some((n) => d.text.startsWith(n + ":"))).slice(0, 5);
+      return h("div", { class: "kad aktiviti" }, h("h3", {}, "Aktiviti terkini"),
+        ...(rows.length ? rows.map((d) => h("div", { class: "baris-kecil" }, h("small", {}, new Date(d.ts).toLocaleDateString("ms-MY")), h("span", {}, d.text)))
+          : [h("p", { class: "muted" }, "Belum ada perubahan kod.")]));
+    };
+    setTimeout(async () => { if (wrap.isConnected) wrap.append(h("h3", {}, "Status"), statusCards(), await activity()); }, 0);
     if (listMode) {
       wrap.append(h("div", { class: "panel" }, ...projects.map((p) => h("a", { href: `#/project/${p.id}`, class: "note", style: { color: "inherit", textDecoration: "none" } },
         h("span", { class: "jenis" }, p.type), h("span", { class: "tajuk" }, p.name),
@@ -551,13 +605,64 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   });
 
   /* ================= CATATAN ================= */
+  // Catatan (Phase 6): tabs Semua / Jadual / Belanja / Idea with a sliding glass marker; cards fall in one by one.
+  const NOTE_TABS = [["semua", "Semua"], ["jadual", "Jadual"], ["belanja", "Belanja"], ["idea", "Idea"]];
   async function notes(view, wantTab, noteId) {
     Scene.setScene("sungai");
-    const { notes: all, devlog } = await A.api("notes");
-    // Links from chat: #/catatan/<semua|jadual|belanja|idea>/<id> open that tab and that note.
-    const linked = { semua: "pustaka", jadual: "pustaka", belanja: "belanja", idea: "idea" }[wantTab];
-    if (linked) localStorage.setItem("asbab:tab", linked);
-    const tab = localStorage.getItem("asbab:tab") || "pustaka";
+    if (NOTE_TABS.some(([id]) => id === wantTab)) localStorage.setItem("asbab:tab6", wantTab);
+    let tab = localStorage.getItem("asbab:tab6") || "semua";
+    const addBtn = h("button", { class: "ikon-btn", "aria-label": "Catatan baru", html: ICON.plus, onclick: () => sheetForm("Catatan baru", [
+      field("Jenis", "kind", { tag: "select", value: tab === "semua" ? "nota" : tab, options: [["nota", "Nota"], ["jadual", "Jadual"], ["idea", "Idea"], ["makan", "Makan"], ["belanja", "Belanja"]] }),
+      field("Tajuk", "title", { required: true }),
+      field("Butiran", "text", { tag: "textarea", rows: 3 }),
+      field("Tarikh", "date", { type: "date", value: todayISO() }),
+      field("Masa", "time", { type: "time" }),
+      field("Jumlah RM (untuk belanja)", "amount", { type: "number", step: "0.01" }),
+    ], async (d) => { const r = await A.api("notes", { method: "POST", body: { ...d, amount: d.amount ? Number(d.amount) : undefined } }); A.toast(r.budget || "Disimpan"); route(); }) });
+    const body = h("div", { class: "stack" }, h("div", { class: "rangka", style: { height: "64px" } }), h("div", { class: "rangka", style: { height: "64px" } }));
+    const marker = h("span", { class: "penanda" });
+    const tabs = h("div", { class: "tab-kaca", role: "tablist" }, marker, ...NOTE_TABS.map(([id, label], i) => h("button", {
+      role: "tab", "data-i": i, class: id === tab ? "aktif" : "", "aria-selected": String(id === tab),
+      onclick: (e) => { tab = id; localStorage.setItem("asbab:tab6", id); place(); paint(); buzz(6); },
+    }, label)));
+    const place = () => {
+      const i = NOTE_TABS.findIndex(([id]) => id === tab);
+      marker.style.width = `calc((100% - 8px) / ${NOTE_TABS.length})`;
+      marker.style.transform = `translateX(${i * 100}%)`;
+      tabs.querySelectorAll("button").forEach((b, j) => { b.classList.toggle("aktif", j === i); b.setAttribute("aria-selected", String(j === i)); });
+    };
+    view.append(h("div", { class: "wrap stack" }, A.topbar("Catatan", addBtn), tabs, body));
+    place();
+    const { notes: all } = await A.api("notes");
+    const today = todayISO();
+    const paint = () => {
+      let list = all.slice();
+      const head = [];
+      if (tab === "jadual") {
+        list = list.filter((n) => n.kind === "jadual").sort((a, b) => ((a.date < today) - (b.date < today)) || (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
+      } else if (tab === "belanja") {
+        list = list.filter((n) => n.kind === "belanja").sort((a, b) => b.date.localeCompare(a.date) || (b.ts || 0) - (a.ts || 0));
+        const sum = (f) => list.filter(f).reduce((x, n) => x + (n.amount || 0), 0);
+        const week = new Date(today); week.setDate(week.getDate() - 6);
+        const wIso = week.toISOString().slice(0, 10);
+        const had = A.boot.settings.belanjaHad || {};
+        const cell = (label, v, limit) => h("div", { class: "kad kad-stat", style: { minHeight: "88px" } }, h("span", { class: "label" }, label), h("span", { class: "nilai", style: { fontSize: "1.2rem" } }, rm(v)),
+          limit ? h("span", { class: "bar" }, h("i", { style: { width: Math.min(100, (v / limit) * 100) + "%", background: v >= limit ? "#ff8787" : "" } })) : null);
+        head.push(h("div", { class: "grid2", style: { gridTemplateColumns: "1fr 1fr 1fr" } },
+          cell("Hari ini", sum((n) => n.date === today), Number(had.harian) || 0),
+          cell("7 hari", sum((n) => n.date >= wIso)),
+          cell("Bulan ini", sum((n) => n.date.slice(0, 7) === today.slice(0, 7)), Number(had.bulanan) || 0)));
+      } else if (tab === "idea") {
+        list = list.filter((n) => n.kind === "idea").sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      } else {
+        list = list.sort((a, b) => b.date.localeCompare(a.date) || (b.ts || 0) - (a.ts || 0));
+      }
+      const cards = list.slice(0, 200).map((n, i) => { const c = noteRow(n); c.style.animationDelay = Math.min(i, 12) * 0.04 + "s"; return c; });
+      const empty = { semua: "Belum ada catatan. Berbual dengan Asbab dan dia akan mula mencatat.", jadual: "Tiada jadual. Asbab tambah sendiri bila jumpa dalam perbualan.", belanja: "Tiada belanja direkod.", idea: "Tiada idea lagi. Taip \"idea: ...\" dalam chat." }[tab];
+      body.replaceChildren(...head, cards.length ? h("div", { class: "senarai-nota" }, ...cards) : h("p", { class: "muted" }, empty),
+        cards.length ? h("p", { class: "muted", style: { fontSize: ".8rem" } }, "Leret ke kiri untuk padam. Tekan lama untuk Edit atau Padam.") : null);
+    };
+    paint();
     if (noteId) setTimeout(() => {
       const n = all.find((x) => x.id === noteId);
       if (!n) return;
@@ -565,24 +670,6 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("sorot"); }
       openNote(n);
     }, 350);
-    const tabs = [["pustaka", "Pustaka"], ["idea", "Bank Idea"], ["belanja", "Belanja"], ["perkembangan", "Perkembangan Asbab"]];
-    const body = h("div", { class: "stack" });
-    view.append(h("div", { class: "wrap stack" },
-      h("div", { class: "row" }, h("h1", { style: { flex: 1 } }, "Catatan"),
-        h("button", { class: "btn utama", onclick: () => sheetForm("Catatan baru", [
-          field("Jenis", "kind", { tag: "select", value: "nota", options: [["nota", "Nota"], ["jadual", "Jadual"], ["idea", "Idea"], ["makan", "Makan"], ["belanja", "Belanja"]] }),
-          field("Tajuk", "title", { required: true }),
-          field("Butiran", "text", { tag: "textarea", rows: 3 }),
-          field("Tarikh", "date", { type: "date", value: todayISO() }),
-          field("Masa", "time", { type: "time" }),
-          field("Jumlah RM (untuk belanja)", "amount", { type: "number", step: "0.01" }),
-        ], async (d) => { await A.api("notes", { method: "POST", body: { ...d, amount: d.amount ? Number(d.amount) : undefined } }); route(); }) }, "Tambah")),
-      h("div", { class: "tabs", role: "tablist" }, ...tabs.map(([id, label]) => h("button", { role: "tab", "aria-selected": String(id === tab), class: id === tab ? "aktif" : "", onclick: () => { localStorage.setItem("asbab:tab", id); route(); } }, label))),
-      body));
-    if (tab === "pustaka") pustaka(body, all);
-    if (tab === "idea") ideaSky(body, all.filter((n) => n.kind === "idea"));
-    if (tab === "belanja") belanjaList(body, all.filter((n) => n.kind === "belanja"));
-    if (tab === "perkembangan") body.append(h("div", { class: "panel" }, ...devlog.map((d) => h("div", { class: "note" }, h("span", { class: "jenis" }, new Date(d.ts).toLocaleDateString("ms-MY")), h("span", { class: "tajuk" }, d.text)))));
   }
 
   /* ---------- Note actions (Phase 5.2): open, edit, delete with undo ---------- */
@@ -626,8 +713,11 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
 
   // Swipe left to delete; long press for Edit/Padam; tap to open.
   function noteRow(n) {
-    const row = h("div", { class: "note", "data-note": n.id },
-      h("span", { class: "jenis" }, n.kind), h("span", { class: "tajuk" }, `${n.time ? n.time + "  " : ""}${n.title}${n.amount ? "  " + rm(n.amount) : ""}`));
+    const IK = { jadual: ICON.jadual, belanja: ICON.wang, idea: ICON.idea, makan: ICON.catatan, log: ICON.info, nota: ICON.catatan };
+    const row = h("div", { class: "kad-nota note", "data-note": n.id },
+      h("span", { class: "ikon", html: IK[n.kind] || ICON.catatan }),
+      h("span", { style: { minWidth: 0 } }, h("div", { class: "tajuk" }, n.title), h("div", { class: "sub" }, `${n.kind} · ${n.date}${n.time ? " " + n.time : ""}`)),
+      n.amount ? h("span", { class: "jumlah" }, rm(n.amount)) : h("span"));
     let x0 = 0, y0 = 0, dx = 0, timer = null, moved = false, pressed = false;
     row.addEventListener("pointerdown", (e) => {
       x0 = e.clientX; y0 = e.clientY; dx = 0; moved = false; pressed = false;
@@ -722,25 +812,26 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   }
 
   /* ================= TETAPAN ================= */
+  // [id, line icon, title, search words, group] (Phase 6: line icons, grouped list)
   const CATS = [
-    ["profil", "👤", "Profil", "nama zon solat lokasi cuaca"],
-    ["tema", "🖼️", "Wallpaper & Tema", "wallpaper gambar blur kaca gelap cerah warna aksen animasi bunyi"],
-    ["sambungan", "🔌", "Sambungan & API", "api key gemini claude openai model github token sandaran uji"],
-    ["otak", "🧠", "Otak Kedua", "ai claude had izin penggunaan model"],
-    ["suara", "🔔", "Bila Asbab Bersuara", "bilal solat taklimat pagi check-in petang waktu senyap keutamaan"],
-    ["personaliti", "💬", "Personaliti", "personaliti cara bercakap nilai"],
-    ["akses", "📱", "Akses Telefon", "toggle suis whatsapp email sms bank skrin fail senarai blok simpan"],
-    ["butang", "🌙", "Butang Terapung", "butang bulan jalur kedudukan terapung kamera lampu kunci"],
-    ["data", "💾", "Data & Backup", "backup eksport pulih identiti"],
-    ["keselamatan", "🔒", "Keselamatan", "cap jari pin kunci"],
-    ["tentang", "ℹ️", "Tentang Asbab", "versi update kemas kini log perkembangan"],
+    ["profil", "profil", "Profil", "nama zon solat lokasi cuaca", "Anda"],
+    ["tema", "rupa", "Wallpaper & Rupa", "wallpaper gambar tema warna fon blur kaca gelap cerah aurora emas laut senja hutan animasi", "Anda"],
+    ["sambungan", "sambungan", "Sambungan & API", "api key gemini claude openai model github token sandaran uji", "Otak"],
+    ["otak", "otak", "Otak Kedua", "ai had izin penggunaan mod tanpa ai", "Otak"],
+    ["personaliti", "personaliti", "Personaliti", "personaliti cara bercakap nilai", "Otak"],
+    ["suara", "loceng", "Bila Asbab Bersuara", "bilal solat azan masjid bunyi taklimat pagi check-in petang waktu senyap keutamaan ringkasan mingguan", "Asbab bersuara"],
+    ["akses", "telefon", "Akses Telefon", "suis whatsapp email sms bank skrin senarai blok simpan jeda", "Telefon"],
+    ["butang", "bulan", "Butang Terapung", "butang bulan jalur kedudukan terapung kamera lampu kunci", "Telefon"],
+    ["data", "data", "Data & Backup", "backup eksport pulih identiti had belanja", "Data dan keselamatan"],
+    ["keselamatan", "kunci", "Keselamatan", "cap jari pin kunci", "Data dan keselamatan"],
+    ["tentang", "info", "Tentang Asbab", "versi update kemas kini log perkembangan", "Tentang"],
   ];
 
   function summary(id, s) {
     const tm = Theme.get();
     return {
       profil: `${s.name} · zon ${s.zone}`,
-      tema: `${tm.asing ? "Wallpaper ikut bahagian" : (tm.wall.semua?.jenis === "gambar" ? "Gambar sendiri" : "Alam hidup")} · blur ${tm.blur}`,
+      tema: `${tm.preset === "auto" ? "Ikut telefon" : tm.preset === "custom" ? "Warna sendiri" : (Theme.PRESETS[tm.preset]?.nama || "")} · ${Theme.FONTS[tm.font]?.nama || "Fon telefon"}`,
       sambungan: `Chat: ${Ai.byId(Ai.config(s).roles.chat).label} · ${Ai.IDS.filter((id) => (A.boot.aiKeys || {})[id]).length} AI ada key · GitHub ${A.boot.github ? "ada" : "belum"}`,
       otak: s.aiEnabled ? `Hidup · ${A.boot.usage.count} permintaan hari ini` : "Dimatikan (mod tanpa AI)",
       suara: `Mod Bilal ${s.bilalLead} minit · taklimat ${s.briefTime} · senyap ${s.quietFrom}-${s.quietTo}`,
@@ -758,29 +849,40 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
     const { settings: s } = await A.api("settings");
     A.boot.settings = s;
     if (!cat) {
-      const list = h("div", { class: "kategori" });
-      const paint = (q = "") => list.replaceChildren(...CATS
-        .filter(([id, , title, kw]) => !q || `${title} ${kw}`.toLowerCase().includes(q.toLowerCase()))
-        .map(([id, icon, title]) => h("a", { href: `#/tetapan/${id}`, class: "panel" },
-          h("span", { class: "ikon", "aria-hidden": "true" }, icon),
-          h("span", { class: "teks" }, h("strong", {}, title), h("span", {}, summary(id, s))),
-          h("span", { class: "anak", "aria-hidden": "true" }, "›"))));
+      // Grouped list with thin rows, line icons and switches in the row.
+      const quick = {
+        otak: () => h("input", { type: "checkbox", class: "suis", checked: s.aiEnabled !== false, "aria-label": "Guna otak kedua", onclick: (e) => e.stopPropagation(),
+          onchange: async (e) => { const d = await A.api("settings", { method: "PUT", body: { aiEnabled: e.target.checked } }); A.boot.settings = d.settings; A.toast(e.target.checked ? "Otak kedua hidup" : "Mod tanpa AI"); } }),
+        butang: () => h("input", { type: "checkbox", class: "suis", checked: !!s.bubble, "aria-label": "Butang bulan terapung", onclick: (e) => e.stopPropagation(),
+          onchange: async (e) => { const d = await A.api("settings", { method: "PUT", body: { bubble: e.target.checked } }); A.boot.settings = d.settings; await Native.bubbleSync({ unhide: true }); A.toast("Disimpan"); } }),
+      };
+      const box = h("div", { class: "stack" });
+      const paint = (q = "") => {
+        const shown = CATS.filter(([id, , title, kw]) => !q || `${title} ${kw}`.toLowerCase().includes(q.toLowerCase()));
+        const groups = [...new Set(shown.map((c) => c[4]))];
+        box.replaceChildren(...groups.map((g) => h("div", { class: "kumpulan" }, h("h4", {}, g),
+          h("div", { class: "senarai" }, ...shown.filter((c) => c[4] === g).map(([id, icon, title]) => h("a", { href: `#/tetapan/${id}`, class: "baris" },
+            h("span", { class: "ikon", html: ICON[icon] }),
+            h("span", { class: "teks" }, h("strong", {}, title), h("span", {}, summary(id, s))),
+            quick[id] ? quick[id]() : h("span", { class: "anak", html: ICON.kanan })))))));
+        if (!shown.length) box.append(h("p", { class: "muted" }, "Tiada tetapan yang sepadan."));
+      };
       paint();
-      view.append(h("div", { class: "wrap stack" }, h("h1", {}, "Tetapan"),
-        h("input", { class: "cari-tetapan", type: "search", placeholder: "Cari tetapan, contohnya blur atau bilal", "aria-label": "Cari tetapan", oninput: (e) => paint(e.target.value) }),
-        list));
+      view.append(h("div", { class: "wrap stack" }, A.topbar("Tetapan"),
+        h("input", { class: "cari-tetapan", type: "search", placeholder: "Cari tetapan, contohnya tema atau bilal", "aria-label": "Cari tetapan", oninput: (e) => paint(e.target.value) }),
+        box));
       return;
     }
     const meta = CATS.find((c) => c[0] === cat);
     if (!meta) { location.hash = "#/tetapan"; return; }
-    const page = h("div", { class: "wrap stack" }, h("a", { href: "#/tetapan", class: "btn" }, "‹ Tetapan"), h("h1", {}, meta[2]));
+    const page = h("div", { class: "wrap stack" }, h("div", { class: "topbar" },
+      h("a", { href: "#/tetapan", class: "ikon-btn", "aria-label": "Kembali ke Tetapan", html: ICON.kiri }), h("h1", {}, meta[2])));
     view.append(page);
     const status = h("p", { class: "muted", role: "status" });
     const save = async (patch) => {
       const d = await A.api("settings", { method: "PUT", body: patch });
       A.boot.settings = d.settings;
-      status.textContent = "Disimpan."; buzz(15);
-      setTimeout(() => (status.textContent = ""), 2500);
+      A.toast("Disimpan"); buzz(15);
       return d.settings;
     };
     const formOf = (fields, collect) => {
@@ -844,46 +946,72 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
     page.append(await P[cat]());
   }
 
+  // Wallpaper & Rupa (Phase 6): one-tap themes, own colours, font, wallpapers, blur/dim/glass.
   function temaPage(s, save) {
     const box = h("div", { class: "stack" });
     const paint = () => {
       const tm = Theme.get();
       const sections = tm.asing ? Theme.SECTIONS : [Theme.SECTIONS[0]];
-      const slider = (key, label, min, max, unit) => h("label", { class: "slider" }, `${label}: ${tm[key]}${unit}`,
+      const slider = (key, label, min, max, unit) => h("label", { class: "f" }, h("span", {}, `${label}: ${tm[key]}${unit}`),
         h("input", { type: "range", min, max, value: tm[key], oninput: (e) => { Theme.set({ [key]: Number(e.target.value) }); e.target.previousSibling.textContent = `${label}: ${e.target.value}${unit}`; } }));
+      const cur = Theme.colours();
+      const custom = tm.custom || { mode: "gelap", bg: cur.bg, glow1: cur.glow1, glow2: cur.glow2, aksen: cur.aksen };
+      const colour = (key, label) => h("label", { class: "f" }, label, h("input", { type: "color", value: custom[key], onchange: (e) => {
+        Theme.set({ preset: "custom", custom: { ...custom, [key]: e.target.value } }); A.toast("Disimpan"); paint();
+      } }));
+      const swatch = (id, p, label) => h("button", {
+        class: tm.preset === id ? "dipilih" : "", "aria-label": `Tema ${label}`,
+        style: { background: `radial-gradient(70% 60% at 20% 15%, ${p.glow1}, transparent), radial-gradient(60% 60% at 90% 40%, ${p.glow2}, transparent), ${p.bg}`, color: p.mode === "cerah" ? "#141a2e" : "#fff" },
+        onclick: () => { Theme.set({ preset: id }); buzz(8); A.toast(`Tema ${label}`); paint(); },
+      }, label);
       box.replaceChildren(
-        h("div", { class: "panel stack" },
+        h("div", { class: "kad stack" }, h("h3", {}, "Tema"),
+          h("div", { class: "tema-grid" },
+            swatch("auto", { ...(matchMedia("(prefers-color-scheme: dark)").matches ? Theme.PRESETS.aurora : Theme.PRESETS.cerah) }, "Ikut telefon"),
+            ...Object.entries(Theme.PRESETS).map(([id, p]) => swatch(id, p, p.nama)))),
+        h("div", { class: "kad stack" }, h("h3", {}, "Warna sendiri"),
+          h("div", { class: "warna-sendiri" }, colour("aksen", "Aksen"), colour("bg", "Latar"), colour("glow1", "Cahaya 1"), colour("glow2", "Cahaya 2")),
+          h("label", { class: "toggle" }, h("span", {}, "Teks gelap (untuk latar cerah)"), h("input", { type: "checkbox", checked: custom.mode === "cerah", onchange: (e) => {
+            Theme.set({ preset: "custom", custom: { ...custom, mode: e.target.checked ? "cerah" : "gelap" } }); paint();
+          } }))),
+        h("div", { class: "kad stack" }, h("h3", {}, "Fon"),
+          h("div", { class: "pilih-fon" }, ...Object.entries(Theme.FONTS).map(([id, f]) => h("button", {
+            class: tm.font === id ? "dipilih" : "", style: { fontFamily: f.css }, onclick: () => { Theme.set({ font: id }); A.toast("Disimpan"); paint(); },
+          }, f.nama))),
+          h("p", { class: "muted" }, "Saiz teks ikut tetapan saiz fon telefon.")),
+        h("div", { class: "kad stack" }, h("h3", {}, "Wallpaper"),
           h("label", { class: "toggle" }, h("span", {}, "Wallpaper berbeza ikut bahagian"), h("input", { type: "checkbox", checked: tm.asing, onchange: (e) => { Theme.set({ asing: e.target.checked }); paint(); } })),
           ...sections.map(([sec, label]) => {
-            const w = tm.wall[sec] || tm.wall.semua || { jenis: "alam" };
-            return h("div", { class: "stack" }, h("h3", {}, label),
+            const w = tm.wall[sec] || tm.wall.semua || { jenis: "gradien" };
+            return h("div", { class: "stack", style: { gap: "8px" } }, h("strong", {}, label),
               h("div", { class: "wall-pilih" },
-                h("button", { class: w.jenis !== "gambar" ? "dipilih" : "", style: { backgroundImage: "linear-gradient(#1b2547,#070b1a)" }, onclick: () => { Theme.setWall(sec, { jenis: "alam" }); paint(); } }, "Alam hidup"),
+                h("button", { class: w.jenis === "gradien" ? "dipilih" : "", style: { backgroundImage: `radial-gradient(70% 60% at 20% 15%, ${cur.glow1}, transparent), radial-gradient(60% 60% at 90% 40%, ${cur.glow2}, transparent), linear-gradient(${cur.bg}, ${cur.bg})` }, onclick: () => { Theme.setWall(sec, { jenis: "gradien" }); paint(); } }, "Gradien kaca"),
+                h("button", { class: w.jenis === "alam" ? "dipilih" : "", style: { backgroundImage: "linear-gradient(#1b2547,#070b1a)" }, onclick: () => { Theme.setWall(sec, { jenis: "alam" }); paint(); } }, "Alam bulan"),
                 w.jenis === "gambar" && w.img ? h("button", { class: "dipilih", style: { backgroundImage: `url("${w.img}")` } }, "Gambar kau") : null,
-                h("label", { style: { backgroundImage: "linear-gradient(135deg,#333a55,#1a1f36)" } }, "+ Pilih gambar",
+                h("label", { style: { backgroundImage: "linear-gradient(135deg,#333a55,#1a1f36)" } }, "+ Dari galeri",
                   h("input", { type: "file", accept: "image/*", hidden: true, onchange: async (e) => {
                     const file = e.target.files[0]; if (!file) return;
                     try {
                       const img = await Theme.compress(file);
                       if (!Theme.setWall(sec, { jenis: "gambar", img })) alert("Storan peranti penuh. Cuba gambar lain atau kurangkan bilangan wallpaper berbeza.");
+                      else A.toast("Disimpan");
                       paint();
                     } catch (err) { alert(err.message); }
                   } }))));
-          })),
-        h("div", { class: "panel stack" }, h("h3", {}, "Kaca dan kabur"),
-          slider("blur", "Blur wallpaper", 0, 30, "px"), slider("gelap", "Gelap", 0, 80, "%"), slider("kaca", "Ketebalan kaca", 0, 100, "%")),
-        h("div", { class: "panel stack" }, h("h3", {}, "Warna aksen"),
-          h("div", { class: "warna-aksen" }, ...Theme.AKSEN.map((c) => h("button", { class: tm.aksen === c ? "dipilih" : "", style: { background: c }, "aria-label": `Warna ${c}`, onclick: () => { Theme.set({ aksen: c }); paint(); } })))),
-        h("div", { class: "panel stack" }, h("h3", {}, "Animasi dan bunyi"),
-          field("Animasi", "animations", { tag: "select", value: s.animations, options: [["penuh", "Penuh"], ["ringan", "Ringan (jimat bateri)"]] }),
-          h("label", { class: "toggle" }, h("span", {}, "Bunyi angin malam"), h("input", { type: "checkbox", name: "sound", checked: s.sound })),
-          h("button", { class: "btn utama", onclick: async (e) => {
-            const p = e.target.closest(".panel");
-            const ns = await save({ animations: $("select", p).value, sound: $("input[name=sound]", p).checked });
-            document.body.classList.toggle("ringan", ns.animations === "ringan");
+          }),
+          slider("blur", "Kabur", 0, 30, "px"), slider("gelap", "Gelap", 0, 80, "%"), slider("kaca", "Ketebalan kaca", 0, 100, "%")),
+        h("div", { class: "kad stack" }, h("h3", {}, "Gerakan"),
+          h("label", { class: "toggle" }, h("span", {}, "Latar bergerak (alam hidup, daun, kunang-kunang)", h("span", { class: "muted", style: { display: "block" } }, "Lalai mati, untuk jimat bateri.")),
+            h("input", { type: "checkbox", checked: s.animations === "penuh", onchange: async (e) => {
+              const ns = await save({ animations: e.target.checked ? "penuh" : "ringan" });
+              document.body.classList.toggle("ringan", ns.animations === "ringan");
+              Object.assign(s, ns);
+            } })),
+          h("label", { class: "toggle" }, h("span", {}, "Bunyi angin malam"), h("input", { type: "checkbox", checked: s.sound, onchange: async (e) => {
+            const ns = await save({ sound: e.target.checked });
             ns.sound ? A.Ambient.start() : A.Ambient.stop();
             Object.assign(s, ns);
-          } }, "Simpan")));
+          } }))));
     };
     paint();
     return box;

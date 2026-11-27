@@ -17,16 +17,8 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 
-const ICON = {
-  chat: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',
-  hari: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>',
-  project: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-25 12 12)"/></svg>',
-  catatan: '<svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>',
-  tetapan: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>',
-  send: '<svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg>',
-  mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
-  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-};
+// One set of line icons (icons.js, Phase 6).
+const ICON = window.Icons;
 
 const A = {
   boot: null,
@@ -53,6 +45,50 @@ async function think(opts, onText) {
 }
 A.think = think;
 A.thinkFull = thinkFull;
+
+/* ---------- Top bar and left drawer (Phase 6) ---------- */
+// Every page starts with: ☰ (drawer) · title · actions on the right.
+function topbar(title, ...actions) {
+  return h("div", { class: "topbar" },
+    h("button", { class: "ikon-btn", "aria-label": "Buka menu", html: ICON.menu, onclick: openDrawer }),
+    h("h1", {}, title), ...actions);
+}
+A.topbar = topbar;
+
+function openDrawer() {
+  if ($(".laci")) return;
+  buzz(8);
+  const [, page, id] = location.hash.replace(/^#/, "").split("/");
+  const latar = h("div", { class: "laci-latar" });
+  const close = () => { laci.classList.remove("buka"); latar.classList.remove("buka"); setTimeout(() => { laci.remove(); latar.remove(); }, 300); };
+  latar.onclick = close;
+  const go = (hash) => (e) => { e.preventDefault(); close(); location.hash = hash; };
+  const rooms = A.boot.rooms.filter((r) => !r.project).sort((a, b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt));
+  const COL = { kod: "#63e6be", biasa: "#b197fc" };
+  const projects = (A.boot.projects || []).filter((p) => !p.archived);
+  const laci = h("nav", { class: "laci", "aria-label": "Menu Asbab" },
+    h("h4", {}, "Chat"),
+    ...rooms.map((r) => h("a", { href: `#/chat/${r.id}`, class: page === "chat" && id === r.id ? "aktif" : "", onclick: go(`#/chat/${r.id}`) },
+      h("span", { class: "ikon", html: ICON.chat }), h("span", { style: { flex: 1 } }, r.name), r.unread ? h("span", { class: "titik", style: { background: "var(--aksen)" } }) : null)),
+    h("button", { class: "item", onclick: async () => {
+      close();
+      const name = prompt("Nama chat baru?");
+      if (!name) return;
+      const { room } = await api("rooms", { method: "POST", body: { name } });
+      A.boot.rooms.push(room);
+      location.hash = `#/chat/${room.id}`;
+    } }, h("span", { class: "ikon", html: ICON.plus }), "Chat baru"),
+    h("h4", {}, "Project"),
+    ...projects.map((p) => h("a", { href: `#/project/${p.id}`, class: page === "project" && id === p.id ? "aktif" : "", onclick: go(`#/project/${p.id}`) },
+      h("span", { class: "titik", style: { background: COL[p.type] || COL.biasa } }), h("span", { style: { flex: 1 } }, p.name),
+      p.pending || p.status === "down" ? h("span", { class: "titik", style: { background: "#ff8787" } }) : null)),
+    h("a", { href: "#/project", onclick: go("#/project") }, h("span", { class: "ikon", html: ICON.project }), "Semua project"),
+    h("h4", {}, "Asbab"),
+    h("a", { href: "#/tetapan", class: page === "tetapan" ? "aktif" : "", onclick: go("#/tetapan") }, h("span", { class: "ikon", html: ICON.tetapan }), "Tetapan"));
+  document.body.append(latar, laci);
+  requestAnimationFrame(() => { laci.classList.add("buka"); latar.classList.add("buka"); });
+}
+A.openDrawer = openDrawer;
 
 /* ---------- Toast ("Disimpan", "Catatan dipadam" + Batal) ---------- */
 function toast(text, { action, ms = 3500 } = {}) {
@@ -209,6 +245,7 @@ addEventListener("hashchange", route);
 
 /* ---------- Chat ---------- */
 function paintRoomStrip() {
+  // Phase 6: chat rooms live in the left drawer; this keeps an old strip (if any) up to date.
   const strip = $("#rooms");
   if (!strip) return;
   const list = A.boot.rooms.filter((r) => !r.project).sort((a, b) => (b.pinned - a.pinned) || (b.updatedAt - a.updatedAt));
@@ -231,23 +268,25 @@ async function renderChat(view, roomId, opts = {}) {
   Scene.setScene(room.scene || "kampung");
   const wrap = h("div", { class: "wrap" });
   if (!opts.embedded) {
-    wrap.append(
-      h("div", { id: "rooms", class: "rooms" }),
-      h("div", { class: "chat-head" },
-        h("h2", {}, room.name),
-        aiPickerButton(room),
-        room.id !== "utama" ? h("button", { class: "btn", onclick: async () => {
+    const more = room.id !== "utama" ? h("button", { class: "ikon-btn", "aria-label": "Pilihan chat", html: ICON.edit, onclick: () => {
+      const s = sheet(room.name,
+        h("button", { class: "pilihan", onclick: async () => {
+          s.close();
           const name = prompt("Nama baharu?", room.name);
           if (!name) return;
           await api(`rooms/${room.id}`, { method: "PATCH", body: { name } });
-          room.name = name; route();
-        } }, "Tukar nama") : null,
-        room.id !== "utama" ? h("button", { class: "btn bahaya", onclick: async () => {
-          if (!confirm(`Padam bilik "${room.name}" dan semua mesejnya?`)) return;
+          room.name = name; toast("Disimpan"); route();
+        } }, h("strong", {}, "Tukar nama")),
+        h("button", { class: "pilihan", onclick: async () => {
+          s.close();
+          if (!confirm(`Padam chat "${room.name}" dan semua mesejnya?`)) return;
           await api(`rooms/${room.id}`, { method: "DELETE" });
           A.boot.rooms = A.boot.rooms.filter((r) => r.id !== room.id);
+          toast("Chat dipadam");
           location.hash = "#/chat/utama";
-        } }, "Padam") : null));
+        } }, h("strong", { style: { color: "#ff8787" } }, "Padam chat")));
+    } }) : null;
+    wrap.append(topbar(room.name, aiPickerButton(room), more));
   }
   wrap.append(h("div", { id: "msgs", class: "msgs", "aria-live": "polite" }));
   (opts.into || view).append(wrap);
@@ -267,7 +306,16 @@ function renderMessages(list, animateLast = false) {
   if (!box) return;
   box.dataset.count = list.length;
   box.replaceChildren(...list.map((m, i) => msgEl(m, animateLast && i === list.length - 1)));
-  if (!list.length) box.append(h("p", { class: "muted" }, "Mula berbual. Taip \"tolong\" untuk lihat apa yang Asbab boleh buat tanpa guna AI."));
+  if (!list.length) {
+    // Empty chat: a greeting and quick suggestions (Phase 6).
+    const ask = (t) => () => { const room = A.room; if (room) sendMessage(room, t); };
+    box.append(h("div", { class: "chat-kosong" },
+      h("h2", {}, `Assalamualaikum, ${A.boot.settings.name}.`),
+      h("p", { class: "muted" }, "Apa yang aku boleh bantu? Perkara di bawah dijawab tanpa AI."),
+      h("div", { class: "cadangan-chat" },
+        ...[["Waktu solat", "waktu solat"], ["Jadual esok", "jadual esok"], ["Belanja hari ni", "belanja hari ni"], ["Apa kau boleh buat?", "tolong"]]
+          .map(([label, t]) => h("button", { onclick: ask(t) }, label)))));
+  }
   $("#view").scrollTop = 1e9;
 }
 
@@ -464,11 +512,19 @@ const RAIL_ICON = {
   tutup: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
 };
 let rail = null;
+let railLatar = null;
+// Closes in reverse order: the last icon goes first, then the rail folds back into the moon.
 function closeRail() {
   if (!rail) return;
-  rail.remove(); rail = null;
-  moon.style.visibility = "";
+  const r = rail, latar = railLatar;
+  rail = null; railLatar = null;
   removeEventListener("pointerdown", outside, true);
+  const kids = [...r.children];
+  kids.forEach((el, i) => { el.style.animationDelay = (kids.length - 1 - i) * 0.025 + "s"; });
+  r.classList.add("tutup");
+  latar?.classList.remove("buka");
+  moon.classList.remove("buka");
+  setTimeout(() => { r.remove(); latar?.remove(); moon.style.visibility = ""; }, 340);
 }
 function outside(e) { if (rail && !rail.contains(e.target)) closeRail(); }
 
@@ -483,8 +539,8 @@ function toggleRail() {
   const items = [];
   let delay = 0;
   const add = (el) => { el.style.animationDelay = (delay += 0.035) + "s"; items.push(el); };
-  add(h("button", { "aria-label": "Tutup", html: Scene.moonSVG(40), onclick: closeRail, style: { background: "transparent", boxShadow: "none" } }));
-  add(h("button", { "aria-label": "Arahan pantas", html: RAIL_ICON.suara, onclick: () => { closeRail(); quickSheet(); } }));
+  add(h("button", { class: "bulan-rail", "aria-label": "Tutup", html: Scene.moonSVG(40), onclick: closeRail, style: { background: "transparent", boxShadow: "none" } }));
+  add(h("button", { "aria-label": "Arahan pantas", html: ICON.mic, onclick: () => { closeRail(); quickSheet(); } }));
   for (const [id, label, href] of NAV.slice(0, 4)) add(h("button", { "aria-label": label, class: here === id ? "aktif" : "", html: ICON[id], onclick: go(href) }));
   add(h("span", { class: "pemisah" }));
   const COL = { kod: "#6fc2b0", biasa: "#a99be0" };
@@ -498,7 +554,10 @@ function toggleRail() {
   rail = h("div", { class: `rail${up ? " ke-atas" : ""}`, role: "menu", "aria-label": "Menu Asbab" }, ...items);
   const left = Math.min(innerWidth - 70, Math.max(6, r.left - 3));
   Object.assign(rail.style, up ? { left: left + "px", bottom: innerHeight - r.bottom - 3 + "px" } : { left: left + "px", top: r.top - 3 + "px" });
-  document.body.append(rail);
+  railLatar = h("div", { class: "rail-latar" });
+  document.body.append(railLatar, rail);
+  requestAnimationFrame(() => railLatar?.classList.add("buka"));
+  moon.classList.add("buka");
   const rr = rail.getBoundingClientRect();
   if (rr.top < 8) Object.assign(rail.style, { top: "8px", bottom: "auto" });
   else if (rr.bottom > innerHeight - 8) Object.assign(rail.style, { top: "auto", bottom: "8px" });
