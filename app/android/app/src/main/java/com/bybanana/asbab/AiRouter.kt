@@ -143,7 +143,7 @@ object AiRouter {
     ): Answer {
         val repo = Repo(context)
         val cfg = config(context)
-        val chain = cfg.chain(role, personal, { hasKey(context, it) }, { repo.usageFor(it) }, prefer)
+        val chain = cfg.chainPrefer(role, personal, prefer, { hasKey(context, it) }, { repo.usageFor(it) })
         val failures = mutableListOf<String>()
         for ((i, id) in chain.withIndex()) {
             val spec = Providers.byId(id) ?: continue

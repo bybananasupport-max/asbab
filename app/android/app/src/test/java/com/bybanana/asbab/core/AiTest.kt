@@ -192,8 +192,8 @@ class AiTest {
     @Test
     fun roomCanPreferAProvider() {
         val cfg = AiConfig.from(JSONObject("""{"ai":{"providers":{"gemini":{"chatModel":"g"},"openai":{"chatModel":"o"}}}}"""))
-        assertEquals(listOf("openai", "gemini", "claude"), cfg.chain("chat", false, { true }, { 0 }, "openai"))
-        assertEquals(listOf("gemini", "claude", "openai"), cfg.chain("chat", false, { true }, { 0 }, "auto"))
-        assertEquals(listOf("gemini", "claude", "openai"), cfg.chain("chat", false, { true }, { 0 }, null))
+        assertEquals(listOf("openai", "gemini", "claude"), cfg.chainPrefer("chat", false, "openai", { true }, { 0 }))
+        assertEquals(listOf("gemini", "claude", "openai"), cfg.chainPrefer("chat", false, "auto", { true }, { 0 }))
+        assertEquals(listOf("gemini", "claude", "openai"), cfg.chainPrefer("chat", false, null, { true }, { 0 }))
     }
 }
