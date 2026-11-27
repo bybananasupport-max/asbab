@@ -54,7 +54,7 @@ describe("rooms and chat", () => {
   it("is honest when the second brain is not connected", async () => {
     const d = await api("chat", { method: "POST", body: { roomId: "utama", text: "terangkan teori relativiti" } });
     expect(d.messages[0].ai).toBe(false);
-    expect(d.messages[0].text).toContain("Sambungan & API");
+    expect(d.messages[0].text).toContain("Sambungan dan API");
   });
 
   it("rejects empty messages and unknown rooms", async () => {

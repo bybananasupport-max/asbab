@@ -202,7 +202,7 @@
           const msg = await addMessage(roomId, {
             role: "asbab", ai: false,
             text: s.aiEnabled
-              ? "Otak kedua belum disambung. Hidupkan satu penyedia dan tampal key dalam Tetapan > Sambungan & API. Buat masa ni aku cuma jawab dari catatan aku sendiri. Taip \"tolong\" untuk senarai perkara yang aku boleh buat."
+              ? "Otak kedua belum disambung. Hidupkan satu penyedia dan tampal key dalam Tetapan > Sambungan dan API. Buat masa ni aku cuma jawab dari catatan aku sendiri. Taip \"tolong\" untuk senarai perkara yang aku boleh buat."
               : "Aku dalam mod tanpa AI sekarang, jadi aku cuma boleh jawab perkara yang dah ada dalam catatan aku. Taip \"tolong\" untuk senarai perkara yang aku boleh buat.",
           });
           return { user, messages: [msg] };
@@ -350,7 +350,7 @@
         }
         // ---------- Code projects (GitHub). Nothing changes in a repo before Amin holds-to-approve. ----------
         const needRepo = async () => {
-          if (!(await keys0()).github) throw new ApiError("Token GitHub belum disimpan. Tampal dalam Tetapan > Sambungan & API.");
+          if (!(await keys0()).github) throw new ApiError("Token GitHub belum disimpan. Tampal dalam Tetapan > Sambungan dan API.");
           if (!GitHubApi.cleanRepo(p.repo)) throw new ApiError("Project ni belum ada repo GitHub yang sah (contoh: username/nama-repo). Tetapkan dalam Butiran.");
           return GitHubApi.cleanRepo(p.repo);
         };

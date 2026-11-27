@@ -53,7 +53,7 @@
         ok: false, current: info.version, needToken: !keys.github,
         message: keys.github
           ? "Token GitHub tiada akses ke repo Asbab, atau belum ada Release lagi. Pastikan token boleh baca repo bybananasupport-max/asbab."
-          : "Repo Asbab private, jadi semakan automatik perlukan token GitHub. Tampal token dalam Tetapan > Sambungan & API, atau buka halaman Release untuk semak sendiri.",
+          : "Repo Asbab private, jadi semakan automatik perlukan token GitHub. Tampal token dalam Tetapan > Sambungan dan API, atau buka halaman Release untuk semak sendiri.",
       };
     }
     if (r.status < 200 || r.status > 299) return { ok: false, current: info.version, message: r.message || `GitHub membalas ralat ${r.status}.` };

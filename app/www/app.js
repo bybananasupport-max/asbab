@@ -35,7 +35,7 @@ const buzz = (ms = 12) => navigator.vibrate?.(ms);
 const api = (...args) => A.api(...args);
 
 // Second brain through the native router (keys never enter the web UI). weight "heavy" = the Coding role,
-// anything else = the Chat role. Providers, models and fallback order come from Tetapan > Sambungan & API.
+// anything else = the Chat role. Providers, models and fallback order come from Tetapan > Sambungan dan API.
 // Resolves with the text (string, as before); thinkFull() also says which AI answered.
 async function thinkFull({ system, prompt, weight = "light", role, maxTokens, prefer }, onText) {
   return Native.ai({ role: role || (weight === "heavy" ? "coding" : "chat"), system, prompt, maxTokens, prefer }, onText);
@@ -54,6 +54,11 @@ function topbar(title, ...actions) {
     h("h1", {}, title), ...actions);
 }
 A.topbar = topbar;
+// Phase 6.2: big heading with an optional small line under it and actions on the right (as in the preview).
+function heading(title, sub, ...actions) {
+  return h("div", { class: "salam-kepala" }, h("div", {}, h("h1", {}, title), sub ? h("div", { class: "kecil" }, sub) : null), ...actions);
+}
+A.heading = heading;
 
 function openDrawer() {
   if ($(".laci")) return;
@@ -67,17 +72,17 @@ function openDrawer() {
   const COL = { kod: "#63e6be", biasa: "#b197fc" };
   const projects = (A.boot.projects || []).filter((p) => !p.archived);
   const laci = h("nav", { class: "laci", "aria-label": "Menu Asbab" },
-    h("h4", {}, "Chat"),
-    ...rooms.map((r) => h("a", { href: `#/chat/${r.id}`, class: page === "chat" && id === r.id ? "aktif" : "", onclick: go(`#/chat/${r.id}`) },
-      h("span", { class: "ikon", html: ICON.chat }), h("span", { style: { flex: 1 } }, r.name), r.unread ? h("span", { class: "titik", style: { background: "var(--aksen)" } }) : null)),
-    h("button", { class: "item", onclick: async () => {
+    h("strong", { class: "tajuk-laci" }, "Chat"),
+    h("button", { class: "baru", onclick: async () => {
       close();
       const name = prompt("Nama chat baru?");
       if (!name) return;
       const { room } = await api("rooms", { method: "POST", body: { name } });
       A.boot.rooms.push(room);
       location.hash = `#/chat/${room.id}`;
-    } }, h("span", { class: "ikon", html: ICON.plus }), "Chat baru"),
+    } }, "+ Chat baru"),
+    ...rooms.map((r) => h("a", { href: `#/chat/${r.id}`, class: page === "chat" && id === r.id ? "aktif" : "", onclick: go(`#/chat/${r.id}`) },
+      h("span", { style: { flex: 1 } }, r.name), r.unread ? h("span", { class: "titik", style: { background: "var(--aksen)" } }) : null)),
     h("h4", {}, "Project"),
     ...projects.map((p) => h("a", { href: `#/project/${p.id}`, class: page === "project" && id === p.id ? "aktif" : "", onclick: go(`#/project/${p.id}`) },
       h("span", { class: "titik", style: { background: COL[p.type] || COL.biasa } }), h("span", { style: { flex: 1 } }, p.name),
@@ -106,8 +111,11 @@ A.toast = toast;
 function sheet(title, ...content) {
   document.querySelector(".sheet")?.remove();
   const close = () => s.remove();
+  // A first item {sub: "..."} becomes the small grey line under the title.
+  const sub = content[0] && content[0].sub ? content.shift().sub : null;
   const s = h("div", { class: "sheet stack", role: "dialog", "aria-label": title },
-    h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, title), h("button", { class: "btn", onclick: close }, "Tutup")), ...content);
+    h("div", { class: "kepala-sheet" }, h("div", {}, h("strong", {}, title), sub ? h("span", { class: "kecil" }, sub) : null),
+      h("button", { class: "tutup-sheet", "aria-label": "Tutup", html: ICON.tutup, onclick: close })), ...content);
   s.close = close;
   document.body.append(s);
   return s;
@@ -117,23 +125,26 @@ A.sheet = sheet;
 /* ---------- Which AI answers in this chat room (Phase 5.2) ---------- */
 function aiPickerButton(room) {
   const name = () => (room.ai && Ai.byId(room.ai) ? Ai.byId(room.ai).label : "Auto");
-  const btn = h("button", { class: "btn ai-pilih", "aria-label": "Pilih otak kedua untuk chat ini", onclick: async () => {
+  const DOT = { gemini: "#7fa8e8", openai: "#e8e8e8", claude: "#e3a77c" };
+  const paintChip = () => btn.replaceChildren(h("b", { style: { background: DOT[room.ai] || "var(--aksen)" } }), name(), h("span", { class: "turun" }, "▾"));
+  const btn = h("button", { class: "cip ai-pilih", "aria-label": "Pilih otak kedua untuk chat ini", onclick: async () => {
     const keys = await Native.secretStatus();
     const active = Ai.active(A.boot.settings, keys);
     const pick = async (id) => {
       await api(`rooms/${room.id}`, { method: "PATCH", body: { ai: id } });
       room.ai = Ai.byId(id) ? id : "auto";
-      btn.textContent = `Otak: ${name()}`;
+      paintChip();
       s.close();
       toast(`Chat ini guna ${name()}`);
     };
     const row = (id, label, note) => h("button", { class: `pilihan${(room.ai || "auto") === id ? " dipilih" : ""}`, onclick: () => pick(id) },
-      h("strong", {}, label), note ? h("span", { class: "muted" }, note) : null);
-    const s = sheet("Otak kedua untuk chat ini",
-      row("auto", "Auto (ikut susunan sandaran)", Ai.active(A.boot.settings, keys).map((id) => Ai.byId(id).label).join(" → ") || "Tiada penyedia aktif"),
-      ...active.map((id) => row(id, Ai.byId(id).label, "Kalau gagal, Asbab cuba penyedia lain ikut susunan sandaran.")),
-      active.length ? null : h("p", { class: "muted" }, "Belum ada penyedia yang hidup dan ada key. Tetapkan dalam Tetapan > Sambungan & API."));
-  } }, `Otak: ${name()}`);
+      h("span", { class: "isi-pilihan" }, h("strong", {}, label), note ? h("span", { class: "muted" }, note) : null), h("span", { class: "tanda" }, "✓"));
+    const s = sheet("Otak kedua untuk chat ini", { sub: "Hanya AI yang aktif dipaparkan" },
+      row("auto", "Auto", "ikut susunan sandaran: " + (Ai.active(A.boot.settings, keys).map((id) => Ai.byId(id).label).join(" → ") || "tiada penyedia aktif")),
+      ...active.map((id) => row(id, Ai.byId(id).label, id === "gemini" ? "kalau gagal, cuba penyedia lain" : null)),
+      active.length ? null : h("p", { class: "muted" }, "Belum ada penyedia yang hidup dan ada key. Tetapkan dalam Tetapan > Sambungan dan API."));
+  } });
+  paintChip();
   return btn;
 }
 
@@ -286,11 +297,19 @@ async function renderChat(view, roomId, opts = {}) {
           location.hash = "#/chat/utama";
         } }, h("strong", { style: { color: "#ff8787" } }, "Padam chat")));
     } }) : null;
-    wrap.append(topbar(room.name, aiPickerButton(room), more));
+    wrap.append(h("div", { class: "topbar chat-atas" },
+      h("button", { class: "ikon-btn", "aria-label": "Buka menu", html: ICON.menu, onclick: openDrawer }),
+      h("strong", {}, room.id === "utama" ? "Asbab" : room.name), more, aiPickerButton(room)));
   }
   wrap.append(h("div", { id: "msgs", class: "msgs", "aria-live": "polite" }));
   (opts.into || view).append(wrap);
   if (!opts.embedded) paintRoomStrip();
+  if (!opts.embedded) {
+    const ask = (t) => () => { if (A.room) sendMessage(A.room, t); };
+    view.append(h("div", { class: "cadangan", "aria-label": "Cadangan" },
+      ...[["Waktu solat", "waktu solat"], ["Jadual esok", "jadual esok"], ["Belanja hari ni", "belanja hari ni"], ["Apa kau boleh buat?", "tolong"]]
+        .map(([label, t]) => h("button", { onclick: ask(t) }, label))));
+  }
   view.append(composer(roomId, opts.onSend));
   view.onscroll = () => Scene.leaf();
   const d = await api(`rooms/${roomId}`);
@@ -308,13 +327,9 @@ function renderMessages(list, animateLast = false) {
   box.replaceChildren(...list.map((m, i) => msgEl(m, animateLast && i === list.length - 1)));
   if (!list.length) {
     // Empty chat: a greeting and quick suggestions (Phase 6).
-    const ask = (t) => () => { const room = A.room; if (room) sendMessage(room, t); };
     box.append(h("div", { class: "chat-kosong" },
       h("h2", {}, `Assalamualaikum, ${A.boot.settings.name}.`),
-      h("p", { class: "muted" }, "Apa yang aku boleh bantu? Perkara di bawah dijawab tanpa AI."),
-      h("div", { class: "cadangan-chat" },
-        ...[["Waktu solat", "waktu solat"], ["Jadual esok", "jadual esok"], ["Belanja hari ni", "belanja hari ni"], ["Apa kau boleh buat?", "tolong"]]
-          .map(([label, t]) => h("button", { onclick: ask(t) }, label)))));
+      h("p", { class: "muted" }, "Apa yang aku boleh bantu? Cadangan di bawah dijawab tanpa AI.")));
   }
   $("#view").scrollTop = 1e9;
 }
@@ -327,9 +342,9 @@ function msgEl(m, fresh = false) {
   if (m.proactive) meta.push("Asbab mulakan");
   const el = h("div", { class: `msg ${m.role === "user" ? "user" : "asbab"}${fresh ? (m.role === "user" ? " baru-user" : " baru-asbab") : ""}` },
     m.text,
-    meta.length || m.ts ? h("div", { class: "meta" }, m.ts ? new Date(m.ts).toLocaleTimeString("ms-MY", { hour: "2-digit", minute: "2-digit" }) : "", ...meta.map((x) => h("span", {}, x))) : null);
+    meta.length || m.ts ? h("div", { class: "meta" }, ...meta.map((x) => h("span", {}, x)), m.ts ? h("span", {}, new Date(m.ts).toLocaleTimeString("ms-MY", { hour: "2-digit", minute: "2-digit" })) : null) : null);
   if (m.links && m.links.length) {
-    el.append(h("div", { class: "msg-pautan" }, ...m.links.map((l) => h("button", { class: "btn kecil", onclick: () => { location.hash = l.hash; } }, l.label))));
+    el.append(h("div", { class: "msg-pautan" }, ...m.links.map((l) => h("button", { class: "aksi", onclick: () => { location.hash = l.hash; } }, l.label))));
   }
   if (fresh && m.role !== "user" && !document.body.classList.contains("ringan")) setTimeout(() => Scene.fireflies(el, 12), 30);
   return el;
@@ -448,23 +463,38 @@ async function sendMessage(roomId, text, { allowAI = false, skipUser = false } =
 A.sendMessage = sendMessage;
 
 /* ---------- Butang bulan ---------- */
-let moon;
+let moon;      // the .gel button (moon + menu that grows out of it)
+let moonList;  // .senarai-g
+let moonDim;   // .gelap-g
+let rail = null; // true while the menu is open (name kept from Phase 4)
+const MOON_ICON = '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="13" fill="rgba(255,255,255,.12)"/><path d="M20 7a13 13 0 1 0 0 26a10 13 0 1 1 0-26z" fill="#f3ead2"/></svg>';
+const GEL = 60;
+
+// Phase 6.2: the moon is one glass button with a turning colour ring. Tapping it makes the button itself
+// grow into a column of round buttons (as in the preview); tapping again folds it back in reverse order.
 function buildMoon() {
-  moon = h("button", { id: "moonbtn", "aria-label": "Asbab: buka arahan pantas", html: Scene.moonSVG(58) });
-  document.body.append(moon);
+  moonDim = h("div", { class: "gelap-g", onclick: () => closeRail() });
+  moonList = h("div", { class: "senarai-g", role: "menu" });
+  const face = h("button", { class: "bulan-g", "aria-label": "Asbab: buka menu pantas", html: MOON_ICON });
+  moon = h("div", { class: "gel", id: "gel" }, moonList, face);
+  document.body.append(moonDim, moon);
   if (localStorage.getItem("asbab:moonOff") === "1") moon.style.display = "none";
-  const saved = JSON.parse(localStorage.getItem("asbab:moon") || "null") || { x: innerWidth - 74, y: innerHeight * 0.55, tidur: false };
+  const saved = JSON.parse(localStorage.getItem("asbab:moon") || "null") || { x: innerWidth - 72, y: innerHeight * 0.52, tidur: false };
   let x = saved.x, y = saved.y, vx = 0, vy = 0, drag = false, moved = 0, lastX = 0, lastY = 0, lastT = 0;
   const place = () => { moon.style.left = x + "px"; moon.style.top = y + "px"; };
-  const clamp = () => { x = Math.max(6, Math.min(innerWidth - 64, x)); y = Math.max(10, Math.min(innerHeight - 70, y)); };
+  const clamp = () => { x = Math.max(6, Math.min(innerWidth - GEL - 6, x)); y = Math.max(10, Math.min(innerHeight - GEL - 10, y)); };
   moon.classList.toggle("tidur", saved.tidur);
   clamp(); place();
+  moon.home = () => { clamp(); place(); };
+  moon.at = () => ({ x, y });
 
-  moon.addEventListener("pointerdown", (e) => {
+  face.addEventListener("pointerdown", (e) => {
+    if (rail) return;
     drag = true; moved = 0; lastX = e.clientX; lastY = e.clientY; lastT = performance.now();
-    moon.setPointerCapture(e.pointerId);
+    face.setPointerCapture(e.pointerId);
+    moon.classList.add("seret");
   });
-  moon.addEventListener("pointermove", (e) => {
+  face.addEventListener("pointermove", (e) => {
     if (!drag) return;
     const now = performance.now(), dx = e.clientX - lastX, dy = e.clientY - lastY;
     moved += Math.abs(dx) + Math.abs(dy);
@@ -473,26 +503,31 @@ function buildMoon() {
     lastX = e.clientX; lastY = e.clientY; lastT = now;
     clamp(); place();
   });
-  moon.addEventListener("pointerup", () => {
+  face.addEventListener("pointerup", () => {
+    if (rail) return closeRail();
+    if (!drag) return;
     drag = false;
     if (moved < 8) {
+      moon.classList.remove("seret");
       if (moon.classList.contains("tidur")) { moon.classList.remove("tidur"); save(false); return; }
       return toggleRail();
     }
-    if (y > innerHeight - 110) { moon.classList.add("tidur"); buzz(20); y = innerHeight - 70; place(); return save(true); }
-    const edge = x + 29 < innerWidth / 2 ? 6 : innerWidth - 64;
+    if (y > innerHeight - 110) { moon.classList.remove("seret"); moon.classList.add("tidur"); buzz(20); y = innerHeight - GEL - 10; place(); return save(true); }
+    // Fling, then snap to the nearest side.
+    const edge = x + GEL / 2 < innerWidth / 2 ? 12 : innerWidth - GEL - 12;
     const step = () => {
       vx *= 0.9; vy *= 0.9;
       x += vx + (edge - x) * 0.12; y += vy;
-      if (y < 10 || y > innerHeight - 70) vy = -vy * 0.5;
+      if (y < 60 || y > innerHeight - 150) vy = -vy * 0.5;
       clamp(); place();
       if (Math.abs(edge - x) > 0.5 || Math.abs(vy) > 0.3) requestAnimationFrame(step);
-      else { x = edge; place(); save(false); buzz(8); }
+      else { x = edge; y = Math.max(60, Math.min(innerHeight - 150, y)); place(); moon.classList.remove("seret"); save(false); buzz(8); }
     };
     requestAnimationFrame(step);
   });
+  face.addEventListener("pointercancel", () => { drag = false; moon.classList.remove("seret"); });
   const save = (tidur) => localStorage.setItem("asbab:moon", JSON.stringify({ x, y, tidur }));
-  addEventListener("resize", () => { clamp(); place(); });
+  addEventListener("resize", () => { if (!rail) { clamp(); place(); } });
   updateMoonState();
 }
 
@@ -502,67 +537,61 @@ function updateMoonState() {
   const urgent = A.boot.projects.some((p) => p.status === "down" || p.pending);
   moon.classList.toggle("bernafas", unread && !urgent);
   moon.classList.toggle("penting", urgent);
-  moon.innerHTML = Scene.moonSVG(58);
 }
 A.updateMoonState = updateMoonState;
 
-/* ---------- Jalur bulan ---------- */
-const RAIL_ICON = {
-  suara: ICON.mic,
-  tutup: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-};
-let rail = null;
-let railLatar = null;
-// Closes in reverse order: the last icon goes first, then the rail folds back into the moon.
+let moonUp = false;
+// Folds back in reverse order: the last button goes first, then the glass shrinks into the moon.
 function closeRail() {
-  if (!rail) return;
-  const r = rail, latar = railLatar;
-  rail = null; railLatar = null;
-  removeEventListener("pointerdown", outside, true);
-  const kids = [...r.children];
-  kids.forEach((el, i) => { el.style.animationDelay = (kids.length - 1 - i) * 0.025 + "s"; });
-  r.classList.add("tutup");
-  latar?.classList.remove("buka");
+  if (!rail || !moon) return;
+  rail = null;
+  const kids = [...moonList.children], n = kids.length;
+  kids.forEach((c, i) => { c.style.transitionDelay = (moonUp ? i : n - i) * 16 + "ms"; });
   moon.classList.remove("buka");
-  setTimeout(() => { r.remove(); latar?.remove(); moon.style.visibility = ""; }, 340);
+  moonDim.classList.remove("buka");
+  moon.style.height = GEL + "px";
+  moon.querySelector(".bulan-g").style.top = "0px";
+  moon.home();
+  setTimeout(() => { if (!rail) moonList.replaceChildren(); }, 520);
 }
-function outside(e) { if (rail && !rail.contains(e.target)) closeRail(); }
 
 function toggleRail() {
   if (rail) return closeRail();
-  buzz();
-  const r = moon.getBoundingClientRect();
-  const up = r.top > innerHeight / 2;
+  buzz(10);
   const [, page] = location.hash.replace(/^#/, "").split("/");
   const here = { chat: "chat", "hari-ini": "hari", project: "project", catatan: "catatan", tetapan: "tetapan" }[page] || "chat";
-  const go = (hash) => () => { closeRail(); location.hash = hash; };
+  const go = (hash) => (e) => { e.stopPropagation(); closeRail(); setTimeout(() => { location.hash = hash; }, 250); };
   const items = [];
-  let delay = 0;
-  const add = (el) => { el.style.animationDelay = (delay += 0.035) + "s"; items.push(el); };
-  add(h("button", { class: "bulan-rail", "aria-label": "Tutup", html: Scene.moonSVG(40), onclick: closeRail, style: { background: "transparent", boxShadow: "none" } }));
-  add(h("button", { "aria-label": "Arahan pantas", html: ICON.mic, onclick: () => { closeRail(); quickSheet(); } }));
-  for (const [id, label, href] of NAV.slice(0, 4)) add(h("button", { "aria-label": label, class: here === id ? "aktif" : "", html: ICON[id], onclick: go(href) }));
-  add(h("span", { class: "pemisah" }));
+  items.push(h("button", { "aria-label": "Arahan pantas", html: ICON.mic, onclick: (e) => { e.stopPropagation(); closeRail(); setTimeout(quickSheet, 250); } }));
+  for (const [id, label, href] of NAV.slice(0, 4)) items.push(h("button", { "aria-label": label, class: here === id ? "kini" : "", html: ICON[id], onclick: go(href) }));
+  items.push(h("span", { class: "garis-g" }));
   const COL = { kod: "#6fc2b0", biasa: "#a99be0" };
   for (const p of (A.boot.projects || []).filter((x) => !x.archived).slice(-3).reverse())
-    add(h("button", { class: "titik", "aria-label": `Project ${p.name}`, onclick: go(`#/project/${p.id}`) }, h("i", { style: { background: COL[p.type] || COL.biasa } }), p.pending || p.status === "down" ? h("b") : null));
+    items.push(h("button", { class: "titik", "aria-label": `Project ${p.name}`, onclick: go(`#/project/${p.id}`) }, h("i", { style: { background: COL[p.type] || COL.biasa } }), p.pending || p.status === "down" ? h("b") : null));
   const used = A.boot.usage?.count || 0, cap = Ai.totalCap(A.boot.settings || {}, A.boot.aiKeys || {}) || 1;
   const f = Math.min(1, used / cap), C = 2 * Math.PI * 15;
-  add(h("button", { class: "cincin-guna", "aria-label": `Otak kedua: ${used} daripada ${cap} hari ini`, onclick: go("#/tetapan/otak"), html: `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="15" stroke="rgba(255,255,255,.15)" stroke-width="3" fill="none"/><circle cx="20" cy="20" r="15" stroke="var(--aksen-2)" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="${C * f} ${C}" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" font-size="10" fill="currentColor" stroke="none">${used}</text></svg>` }));
-  add(h("button", { class: `profil${here === "tetapan" ? " aktif" : ""}`, "aria-label": "Tetapan", onclick: go("#/tetapan") }, (A.boot.settings?.name || "A").slice(0, 1).toUpperCase()));
+  items.push(h("button", { class: "cincin-guna", "aria-label": `Otak kedua: ${used} daripada ${cap} hari ini`, onclick: go("#/tetapan/otak"), html: `<svg viewBox="0 0 40 40" style="stroke:none"><circle cx="20" cy="20" r="15" stroke="rgba(255,255,255,.15)" stroke-width="3" fill="none"/><circle cx="20" cy="20" r="15" stroke="var(--aksen)" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="${C * f} ${C}" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" font-size="11" fill="currentColor">${used}</text></svg>` }));
+  items.push(h("button", { class: here === "tetapan" ? "kini" : "", "aria-label": "Tetapan", html: ICON.tetapan, onclick: go("#/tetapan") }));
+  moonList.replaceChildren(...items);
 
-  rail = h("div", { class: `rail${up ? " ke-atas" : ""}`, role: "menu", "aria-label": "Menu Asbab" }, ...items);
-  const left = Math.min(innerWidth - 70, Math.max(6, r.left - 3));
-  Object.assign(rail.style, up ? { left: left + "px", bottom: innerHeight - r.bottom - 3 + "px" } : { left: left + "px", top: r.top - 3 + "px" });
-  railLatar = h("div", { class: "rail-latar" });
-  document.body.append(railLatar, rail);
-  requestAnimationFrame(() => railLatar?.classList.add("buka"));
-  moon.classList.add("buka");
-  const rr = rail.getBoundingClientRect();
-  if (rr.top < 8) Object.assign(rail.style, { top: "8px", bottom: "auto" });
-  else if (rr.bottom > innerHeight - 8) Object.assign(rail.style, { top: "auto", bottom: "8px" });
-  moon.style.visibility = "hidden";
-  setTimeout(() => addEventListener("pointerdown", outside, true), 50);
+  // Height: 60 for the moon + 50 per round button, 8 per divider line.
+  const full = GEL + items.reduce((a, el) => a + (el.classList.contains("garis-g") ? 8 : 50), 0) + 2;
+  const r = moon.getBoundingClientRect();
+  moonUp = r.top > innerHeight / 2;
+  const n = items.length;
+  items.forEach((c, i) => { c.style.transitionDelay = (moonUp ? n - i : i) * 28 + "ms"; });
+  moonList.style.top = moonUp ? "8px" : "62px";
+  moon.querySelector(".bulan-g").style.top = moonUp ? full - GEL + "px" : "0px";
+  let top = moonUp ? r.top - (full - GEL) : r.top;
+  top = Math.max(8, Math.min(innerHeight - full - 8, top));
+  rail = true;
+  // Next frame so the height and the buttons animate from the closed state.
+  requestAnimationFrame(() => {
+    moon.style.top = top + "px";
+    moon.style.height = full + "px";
+    moon.classList.add("buka");
+    moonDim.classList.add("buka");
+  });
 }
 
 function quickSheet() {
@@ -572,7 +601,8 @@ function quickSheet() {
   const quick = (label, text) => h("button", { class: "btn", onclick: async () => { close(); location.hash = "#/chat/utama"; setTimeout(() => sendMessage("utama", text), 600); } }, label);
   const ta = h("textarea", { rows: 2, placeholder: "Arahan untuk Asbab…", "aria-label": "Arahan pantas" });
   const sheet = h("div", { class: "sheet stack", role: "dialog", "aria-label": "Arahan pantas Asbab" },
-    h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, "Asbab"), h("button", { class: "btn", onclick: close }, "Tutup")),
+    h("div", { class: "kepala-sheet" }, h("div", {}, h("strong", {}, "Asbab"), h("span", { class: "kecil" }, "Arahan pantas")),
+      h("button", { class: "tutup-sheet", "aria-label": "Tutup", html: ICON.tutup, onclick: close })),
     h("div", { class: "row" }, voiceButton((t) => { ta.value = (ta.value + " " + t).trim(); }), ta),
     h("div", { class: "row" },
       h("button", { class: "btn utama", onclick: () => {
