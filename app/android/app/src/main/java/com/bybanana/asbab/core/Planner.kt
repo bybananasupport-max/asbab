@@ -10,7 +10,7 @@ import java.util.Locale
 // but instead of waking every 5 minutes it works out the exact time of every upcoming reminder,
 // so Android can wake the phone with an exact alarm.
 
-enum class Kind { BILAL, TANYA, JADUAL, BRIEF, CHECKIN }
+enum class Kind { BILAL, TANYA, JADUAL, BRIEF, CHECKIN, AZAN, WEEKLY }
 
 data class Event(
     val key: String,        // unique per reminder, e.g. "2026-11-25:bilal:fajr"; stored once sent
@@ -35,6 +35,8 @@ object Planner {
     const val ASK_AFTER_MIN = 40L
     /** Schedule reminders come this long before the item. */
     const val JADUAL_LEAD_MIN = 20L
+    /** Weekly summary every Sunday night. */
+    const val WEEKLY_TIME = "21:00"
 
     private val HARI = mapOf(
         DayOfWeek.MONDAY to "Isnin", DayOfWeek.TUESDAY to "Selasa", DayOfWeek.WEDNESDAY to "Rabu", DayOfWeek.THURSDAY to "Khamis",
@@ -71,6 +73,9 @@ object Planner {
                             body = "$nama lagi ${s.bilalLead} minit ($time). Masa untuk bersiap, dah mandi dan ambil wuduk?",
                         )
                     }
+                    if (k in s.azan && s.azanSound.isNotBlank()) {
+                        out += Event("$date:azan:$k", Kind.AZAN, at(date, time), date, waktu = k, title = "Azan $nama", body = "Sudah masuk waktu $nama ($time).")
+                    }
                     out += Event(
                         "$date:tanya:$k", Kind.TANYA, at(date, time, ASK_AFTER_MIN), date, waktu = k,
                         title = "Dah solat $nama?",
@@ -87,6 +92,9 @@ object Planner {
                 )
             }
             out += Event("$date:brief", Kind.BRIEF, at(date, s.briefTime), date, title = "Taklimat pagi", body = "")
+            if (s.weeklyOn && d.dayOfWeek == DayOfWeek.SUNDAY) {
+                out += Event("$date:mingguan", Kind.WEEKLY, at(date, WEEKLY_TIME), date, title = "Ringkasan minggu ini", body = "")
+            }
             out += Event(
                 "$date:checkin", Kind.CHECKIN, at(date, s.checkinTime), date, title = "Asbab",
                 body = "Assalamualaikum ${s.name}. Hari ni kau buat apa, keluar ke mana? Cerita sikit, aku catatkan.",
@@ -128,11 +136,14 @@ object Planner {
      * - In quiet hours, schedule reminders only speak if schedules are Amin's top priority.
      * - The morning brief and evening check-in never speak in quiet hours; the check-in also obeys the daily limit.
      */
-    fun decide(e: Event, now: ZonedDateTime, s: Settings, solatDone: Set<String>, proactiveToday: Int): Decision {
+    fun decide(e: Event, now: ZonedDateTime, s: Settings, solatDone: Set<String>, proactiveToday: Int, inMasjid: Boolean = false): Decision {
         val local = now.withZoneSameInstant(MALAYSIA)
         val quiet = isQuiet(local.hour * 60 + local.minute, s.quietFrom, s.quietTo)
+        // Mod Masjid: completely silent except Mod Bilal (and the azan Amin chose, which marks the start).
+        if (inMasjid && e.kind != Kind.BILAL && e.kind != Kind.AZAN) return Decision.Skip("mod masjid")
         return when (e.kind) {
-            Kind.BILAL -> Decision.Deliver
+            Kind.BILAL, Kind.AZAN -> Decision.Deliver
+            Kind.WEEKLY -> if (quiet) Decision.Skip("waktu senyap") else Decision.Deliver
             Kind.TANYA -> if (e.waktu in solatDone) Decision.Skip("sudah ditanda") else Decision.Deliver
             Kind.JADUAL -> if (quiet && rank("jadual", s.priorities) != 0) Decision.Skip("waktu senyap") else Decision.Deliver
             Kind.BRIEF -> if (quiet) Decision.Skip("waktu senyap") else Decision.Deliver
@@ -145,6 +156,46 @@ object Planner {
     }
 
     private fun rm(n: Double) = "RM" + String.format(Locale.US, "%.2f", n)
+
+    /** True while Mod Masjid is on and now is within [prayer time, prayer time + masjidMinutes). */
+    fun inMasjid(now: ZonedDateTime, s: Settings, today: PrayerDay?): Boolean {
+        if (!s.masjidOn || today == null) return false
+        val local = now.withZoneSameInstant(MALAYSIA)
+        val m = local.hour * 60 + local.minute
+        return WAKTU.any { (k, _) -> today.times[k]?.let { t -> m >= toMin(t) && m < toMin(t) + s.masjidMinutes } ?: false }
+    }
+
+    /**
+     * Sunday night summary, no AI: spending this week (Monday to Sunday), prayers not marked this week,
+     * and next week's schedule. solatByDate = prayers marked done per date.
+     */
+    fun weekly(sunday: String, s: Settings, notes: List<Note>, solatByDate: Map<String, Set<String>>): String {
+        val sun = LocalDate.parse(sunday)
+        val mon = sun.minusDays(6)
+        val days = (0L..6L).map { mon.plusDays(it).toString() }
+        val spend = notes.filter { it.kind == "belanja" && it.date in days }
+        val total = spend.sumOf { it.amount ?: 0.0 }
+        val missed = WAKTU.map { (k, nama) -> nama to days.count { d -> k !in (solatByDate[d] ?: emptySet()) } }.filter { it.second > 0 }
+        val nextDays = (1L..7L).map { sun.plusDays(it).toString() }
+        val next = notes.filter { it.kind == "jadual" && it.date in nextDays }.sortedBy { it.date + it.time }
+        val lines = mutableListOf("Ringkasan minggu ni, ${s.name} (${mon} hingga ${sunday}):")
+        lines += "Belanja: ${rm(total)}" + if (spend.isNotEmpty()) " (${spend.size} rekod, purata ${rm(total / 7)} sehari)." else "."
+        lines += if (missed.isEmpty()) "Solat: semua waktu ditanda. Alhamdulillah." else "Solat belum ditanda: " + missed.joinToString(", ") { "${it.first} ${it.second}" } + "."
+        lines += if (next.isEmpty()) "Jadual minggu depan: tiada lagi dalam catatan." else "Jadual minggu depan:\n" + next.take(10).joinToString("\n") { "• ${hari(it.date)} ${it.time.ifBlank { "--:--" }} ${it.title}" }
+        return lines.joinToString("\n")
+    }
+
+    /** Spending limit level: null, "near" (80% or more) or "over" (more than the limit). */
+    fun budgetLevel(total: Double, limit: Double): String? = when {
+        limit <= 0 -> null
+        total > limit -> "over"
+        total >= limit * 0.8 -> "near"
+        else -> null
+    }
+
+    fun budgetMessage(level: String, period: String, total: Double, limit: Double): String =
+        if (level == "over") "Belanja $period dah melebihi had: ${rm(total)} daripada ${rm(limit)}. Perlahan sikit, bro."
+        else "Belanja $period dah ${Math.round(total / limit * 100)}% daripada had (${rm(total)} / ${rm(limit)})."
 
     /**
      * Morning brief without AI. Sections follow Amin's priority list.

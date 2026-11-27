@@ -449,6 +449,69 @@ class AsbabPlugin : Plugin() {
         }
     }
 
+    /* ---------- Phase 6.1: Amin's own Mod Bilal / azan audio, widget ---------- */
+
+    /** Opens the phone's file picker for an audio file; Asbab keeps permission to play it later. */
+    @PluginMethod
+    fun pickAudio(call: PluginCall) {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "audio/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(call, i, "audioResult")
+    }
+
+    @ActivityCallback
+    private fun audioResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        val uri = result.data?.data ?: return call.resolve(JSObject().put("uri", null))
+        try {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: Exception) {
+            android.util.Log.w("Asbab", "persist uri", e)
+        }
+        var name = uri.lastPathSegment ?: "audio"
+        try {
+            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) name = c.getString(0) ?: name
+            }
+        } catch (e: Exception) {}
+        call.resolve(JSObject().put("uri", uri.toString()).put("name", name))
+    }
+
+    /** "Cuba bunyi": plays the Mod Bilal or azan setting now ({kind: "bilal"|"azan"}). */
+    @PluginMethod
+    fun soundTest(call: PluginCall) {
+        val s = Repo(context).settings()
+        if (call.getString("kind") == "azan") {
+            if (s.azanSound.isBlank()) return call.reject("Pilih fail azan dulu.")
+            SoundService.play(context, s.azanSound, s.azanVolume, "Cuba azan")
+        } else when {
+            s.bilalVibrateOnly -> SoundService.vibrate(context)
+            s.bilalSound.isNotBlank() -> SoundService.play(context, s.bilalSound, s.bilalVolume, "Cuba bunyi Mod Bilal")
+            else -> Notifier.showTest(context)
+        }
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun soundStop(call: PluginCall) {
+        SoundService.stop(context)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun widgetUpdate(call: PluginCall) {
+        Scheduler.async { try { AsbabWidget.update(context) } catch (e: Exception) {}; call.resolve() }
+    }
+
+    /** Spending limit check after a note is saved in the app (warning message + notification once). */
+    @PluginMethod
+    fun budgetCheck(call: PluginCall) {
+        Scheduler.async { try { Budget.check(context, Repo(context)) } catch (e: Exception) {}; call.resolve() }
+    }
+
     /* ---------- voice input (Bahasa Melayu) ---------- */
 
     @PluginMethod

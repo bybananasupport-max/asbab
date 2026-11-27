@@ -69,6 +69,12 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     bubble: false,
     bubbleItems: [],
     backupRepo: "",
+    // Phase 6.1
+    masjid: { on: false, minit: 20 },
+    ringkasanMingguan: true,
+    bunyi: { bilalUri: "", bilalNama: "", bilalVol: 80, getarSahaja: false, azanUri: "", azanNama: "", azanVol: 80, azan: {} },
+    belanjaHad: { harian: 0, bulanan: 0 },
+    kunci: { on: true, minit: 3 },
   };
   const SCENES = ["gunung", "sungai", "bukit", "kampung"];
   const WAKTU = [["fajr", "Subuh"], ["dhuhr", "Zohor"], ["asr", "Asar"], ["maghrib", "Maghrib"], ["isha", "Isyak"]];
@@ -105,5 +111,31 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     };
   }
 
-  return { TZ, nowMY, addDays, hariOf, toMin, uid, PERSONALITY, DEFAULT_SETTINGS, SCENES, WAKTU, NOTE_KINDS, parseVersion, compareVersions, updateInfo };
+  /* ---------- Spending limits (same rules as Planner.budgetLevel in Kotlin) ---------- */
+  function budgetLevel(total, limit) {
+    if (!(limit > 0)) return null;
+    if (total > limit) return "over";
+    if (total >= limit * 0.8) return "near";
+    return null;
+  }
+  const rm2 = (n) => `RM${Number(n || 0).toFixed(2)}`;
+  function budgetMessage(level, period, total, limit) {
+    return level === "over"
+      ? `Belanja ${period} dah melebihi had: ${rm2(total)} daripada ${rm2(limit)}. Perlahan sikit, bro.`
+      : `Belanja ${period} dah ${Math.round((total / limit) * 100)}% daripada had (${rm2(total)} / ${rm2(limit)}).`;
+  }
+  // Warning text for the totals today / this month, or "" (daily checked first).
+  function budgetWarning(notes, today, had = {}) {
+    const spend = notes.filter((n) => n.kind === "belanja");
+    const day = spend.filter((n) => n.date === today).reduce((a, n) => a + (n.amount || 0), 0);
+    const mon = spend.filter((n) => String(n.date).slice(0, 7) === today.slice(0, 7)).reduce((a, n) => a + (n.amount || 0), 0);
+    const out = [];
+    const d = budgetLevel(day, Number(had.harian) || 0);
+    if (d) out.push(budgetMessage(d, "hari ni", day, Number(had.harian)));
+    const m = budgetLevel(mon, Number(had.bulanan) || 0);
+    if (m) out.push(budgetMessage(m, "bulan ni", mon, Number(had.bulanan)));
+    return out.join(" ");
+  }
+
+  return { TZ, nowMY, budgetLevel, budgetMessage, budgetWarning, addDays, hariOf, toMin, uid, PERSONALITY, DEFAULT_SETTINGS, SCENES, WAKTU, NOTE_KINDS, parseVersion, compareVersions, updateInfo };
 });

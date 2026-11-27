@@ -5,4 +5,5 @@
     <string name="package_name">com.bybanana.asbab</string>
     <string name="custom_url_scheme">com.bybanana.asbab</string>
     <string name="accessibility_description">Asbab membaca teks skrin daripada app yang kau benarkan sahaja (contohnya WhatsApp), untuk dicatat sebagai DATA. App bank, e-wallet, pengurus kata laluan dan OTP tidak pernah dibaca, begitu juga ruang kata laluan. Asbab tidak menekan, menaip atau bertindak dalam app lain. Satu-satunya tindakan ialah kunci skrin bila kau tekan pintasan itu pada butang bulan. Hidupkan juga suis "Baca isi skrin app" dalam Tetapan Asbab.</string>
+    <string name="widget_description">Solat seterusnya dengan kiraan, dan jadual seterusnya.</string>
 </resources>

@@ -203,7 +203,14 @@
     Asbab.dbPut({ key: "_ui:theme", value: v }).catch(() => {});
   }
 
+  // Phase 6.1: Amin's own audio for Mod Bilal / azan, widget refresh.
+  const pickAudio = async () => (Asbab ? Asbab.pickAudio() : { uri: null });
+  const soundTest = (kind) => (Asbab ? Asbab.soundTest({ kind }) : Promise.reject(new Error("Hanya dalam app Android.")));
+  const soundStop = () => Asbab?.soundStop();
+  const widgetUpdate = () => Asbab?.widgetUpdate().catch(() => {});
+
   window.Native = {
+    pickAudio, soundTest, soundStop, widgetUpdate,
     rememberTheme,
     workSync, checkSites, backupNow, backupStatus, shareFile,
     ai, aiListModels, aiTest, aiUsage,

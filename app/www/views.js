@@ -814,7 +814,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   /* ================= TETAPAN ================= */
   // [id, line icon, title, search words, group] (Phase 6: line icons, grouped list)
   const CATS = [
-    ["profil", "profil", "Profil", "nama zon solat lokasi cuaca", "Anda"],
+    ["profil", "profil", "Profil", "nama zon solat lokasi cuaca had belanja", "Anda"],
     ["tema", "rupa", "Wallpaper & Rupa", "wallpaper gambar tema warna fon blur kaca gelap cerah aurora emas laut senja hutan animasi", "Anda"],
     ["sambungan", "sambungan", "Sambungan & API", "api key gemini claude openai model github token sandaran uji", "Otak"],
     ["otak", "otak", "Otak Kedua", "ai had izin penggunaan mod tanpa ai", "Otak"],
@@ -839,7 +839,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       akses: `${["whatsapp", "email", "sms_bank", "skrin", "penggunaan_app"].filter((k) => s.access[k]).length} daripada 5 suis hidup`,
       butang: s.bubble ? "Terapung di atas app lain" : "Dalam Asbab sahaja",
       data: s.backupRepo ? `Backup harian ke ${s.backupRepo}` : "Backup belum ditetapkan",
-      keselamatan: "Kunci cap jari/PIN: akan datang",
+      keselamatan: s.kunci?.on === false ? "Kunci dimatikan" : `Cap jari / PIN · ${s.kunci?.minit ?? 3} minit`,
       tentang: `Versi ${A.boot.version}`,
     }[id];
   }
@@ -897,7 +897,13 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
         field("Nama", "name", { value: s.name }),
         field("Zon waktu solat JAKIM", "zone", { value: s.zone, placeholder: "KDH01" }),
         h("div", { class: "row" }, field("Latitud (cuaca)", "lat", { type: "number", step: "0.0001", value: s.lat }), field("Longitud", "lon", { type: "number", step: "0.0001", value: s.lon })),
-      ], (f) => ({ name: f.get("name"), zone: f.get("zone").toUpperCase(), lat: Number(f.get("lat")), lon: Number(f.get("lon")) })),
+        h("h3", {}, "Had belanja"),
+        h("p", { class: "muted" }, "Amaran lembut bila belanja capai 80% had, dan bila melebihi. Biarkan 0 kalau tak mahu had."),
+        h("div", { class: "row" }, field("Had sehari (RM)", "harian", { type: "number", step: "0.01", value: s.belanjaHad?.harian || 0 }), field("Had sebulan (RM)", "bulanan", { type: "number", step: "0.01", value: s.belanjaHad?.bulanan || 0 })),
+      ], (f) => ({
+        name: f.get("name"), zone: f.get("zone").toUpperCase(), lat: Number(f.get("lat")), lon: Number(f.get("lon")),
+        belanjaHad: { harian: Math.max(0, Number(f.get("harian")) || 0), bulanan: Math.max(0, Number(f.get("bulanan")) || 0) },
+      })),
 
       tema: () => temaPage(s, save),
 
@@ -910,7 +916,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       ], (f) => ({ aiEnabled: f.get("aiEnabled") === "on", askBeforeAI: f.get("askBeforeAI") === "on" })),
         h("a", { class: "btn", href: "#/tetapan/sambungan" }, "Buka Sambungan & API")),
 
-      suara: () => h("div", { class: "stack" }, reminderStatus(), formOf([
+      suara: () => h("div", { class: "stack" }, reminderStatus(), bunyiPanel(s, save), masjidPanel(s, save), formOf([
         field("Mod Bilal: ingatkan berapa minit sebelum waktu", "bilalLead", { type: "number", value: s.bilalLead }),
         h("p", { class: "muted" }, "Mod Bilal dan pertanyaan \"Dah solat?\" tetap berbunyi semasa waktu senyap. Taklimat dan check-in tidak."),
         h("div", { class: "row" }, field("Taklimat pagi", "briefTime", { type: "time", value: s.briefTime }), field("Check-in petang", "checkinTime", { type: "time", value: s.checkinTime })),
@@ -934,8 +940,15 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
 
       data: () => dataPage(s, save),
 
-      keselamatan: () => h("div", { class: "panel stack" },
-        h("p", { class: "muted" }, "Asbab tiada password lagi. Kunci dengan cap jari atau PIN telefon akan ditambah dalam fasa akan datang. Semua data disimpan dalam telefon ini sahaja.")),
+      keselamatan: () => {
+        const k = s.kunci || { on: true, minit: 3 };
+        return h("div", { class: "kad stack" },
+          h("label", { class: "toggle" }, h("span", {}, "Kunci dengan cap jari / PIN", h("span", { class: "muted", style: { display: "block" } }, "Diminta bila Asbab dibuka, atau kembali dari latar belakang selepas tempoh di bawah. Guna kunci telefon sendiri; Asbab tak simpan PIN.")),
+            h("input", { type: "checkbox", checked: k.on !== false, onchange: async (e) => { await save({ kunci: { ...k, on: e.target.checked } }); k.on = e.target.checked; } })),
+          field("Kunci semula selepas di latar belakang", "minit", { tag: "select", value: String(k.minit ?? 3), options: [["0", "Serta-merta"], ["1", "1 minit"], ["3", "3 minit"], ["5", "5 minit"], ["10", "10 minit"], ["30", "30 minit"]] }),
+          h("button", { class: "btn", onclick: async (e) => { const v = Number(e.target.closest(".kad").querySelector("select").value); await save({ kunci: { ...k, minit: v } }); k.minit = v; } }, "Simpan tempoh"),
+          h("p", { class: "muted" }, "Semua data Asbab disimpan dalam telefon ini sahaja. Key disulitkan dengan Android Keystore."));
+      },
 
       tentang: async () => {
         const { devlog } = await A.api("notes");
@@ -1225,6 +1238,52 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
     paint();
     Native.onResume?.(() => { if (box.isConnected) paint(); });
     return box;
+  }
+
+  /* ---------- Phase 6.1: Mod Bilal sound, azan, Mod Masjid, weekly summary ---------- */
+  function bunyiPanel(s, save) {
+    const box = h("div", { class: "kad stack" });
+    const paint = () => {
+      const b = { ...(s.bunyi || {}) };
+      b.azan = { ...(b.azan || {}) };
+      const put = async (patch) => { const ns = await save({ bunyi: { ...b, ...patch } }); Object.assign(s, ns); paint(); };
+      const pick = async (kind) => {
+        const r = await Native.pickAudio();
+        if (!r || !r.uri) return;
+        await put(kind === "azan" ? { azanUri: r.uri, azanNama: r.name } : { bilalUri: r.uri, bilalNama: r.name });
+      };
+      const vol = (key, label) => h("label", { class: "f" }, h("span", {}, `${label}: ${b[key] ?? 80}%`),
+        h("input", { type: "range", min: 0, max: 100, value: b[key] ?? 80, onchange: (e) => put({ [key]: Number(e.target.value) }) }));
+      const test = (kind) => h("button", { class: "btn kecil", onclick: async () => { try { await Native.soundTest(kind); } catch (e) { A.toast(e.message); } } }, "Cuba bunyi");
+      box.replaceChildren(
+        h("h3", {}, "Bunyi Mod Bilal"),
+        h("div", { class: "row" }, h("span", { style: { flex: 1 } }, b.bilalUri ? (b.bilalNama || "Fail dipilih") : "Bunyi notifikasi telefon"),
+          h("button", { class: "btn kecil", onclick: () => pick("bilal") }, "Pilih fail"),
+          b.bilalUri ? h("button", { class: "btn kecil", onclick: () => put({ bilalUri: "", bilalNama: "" }) }, "Guna bunyi telefon") : null),
+        vol("bilalVol", "Kelantangan"),
+        h("label", { class: "toggle" }, h("span", {}, "Getar sahaja"), h("input", { type: "checkbox", checked: !!b.getarSahaja, onchange: (e) => put({ getarSahaja: e.target.checked }) })),
+        h("div", { class: "row" }, test("bilal"), h("button", { class: "btn kecil", onclick: () => Native.soundStop() }, "Berhenti")),
+        h("h3", {}, "Azan pada waktu masuk"),
+        h("p", { class: "muted" }, "Guna fail azan yang kau pilih sendiri. Asbab tak membawa rakaman azan."),
+        h("div", { class: "row" }, h("span", { style: { flex: 1 } }, b.azanUri ? (b.azanNama || "Fail dipilih") : "Belum dipilih"),
+          h("button", { class: "btn kecil", onclick: () => pick("azan") }, "Pilih fail azan")),
+        ...[["fajr", "Subuh"], ["dhuhr", "Zohor"], ["asr", "Asar"], ["maghrib", "Maghrib"], ["isha", "Isyak"]].map(([k, n]) => h("label", { class: "toggle" }, h("span", {}, n),
+          h("input", { type: "checkbox", checked: !!b.azan[k], disabled: !b.azanUri, onchange: (e) => put({ azan: { ...b.azan, [k]: e.target.checked } }) }))),
+        vol("azanVol", "Kelantangan azan"),
+        h("div", { class: "row" }, b.azanUri ? test("azan") : null, h("button", { class: "btn kecil", onclick: () => Native.soundStop() }, "Berhenti")));
+    };
+    paint();
+    return box;
+  }
+
+  function masjidPanel(s, save) {
+    const m = { on: false, minit: 20, ...(s.masjid || {}) };
+    return h("div", { class: "kad stack" },
+      h("label", { class: "toggle" }, h("span", {}, "Mod Masjid", h("span", { class: "muted", style: { display: "block" } }, "Dari waktu masuk solat, Asbab senyap sepenuhnya kecuali Mod Bilal.")),
+        h("input", { type: "checkbox", checked: m.on, onchange: async (e) => { m.on = e.target.checked; Object.assign(s, await save({ masjid: { ...m } })); } })),
+      h("label", { class: "f" }, "Tempoh senyap (minit)", h("input", { type: "number", min: 5, max: 120, value: m.minit, onchange: async (e) => { m.minit = Math.min(120, Math.max(5, Number(e.target.value) || 20)); Object.assign(s, await save({ masjid: { ...m } })); } })),
+      h("label", { class: "toggle" }, h("span", {}, "Ringkasan mingguan (Ahad 9 malam)", h("span", { class: "muted", style: { display: "block" } }, "Belanja minggu ni, solat yang belum ditanda, jadual minggu depan. Tanpa AI.")),
+        h("input", { type: "checkbox", checked: s.ringkasanMingguan !== false, onchange: async (e) => Object.assign(s, await save({ ringkasanMingguan: e.target.checked })) })));
   }
 
   // Reminder health: notification permission, exact alarms, next alarm, test button, battery guidance.

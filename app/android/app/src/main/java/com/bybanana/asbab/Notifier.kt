@@ -16,6 +16,8 @@ object Notifier {
     const val CH_BILAL = "bilal"
     const val CH_REMIND = "peringatan"
     const val CH_BRIEF = "taklimat"
+    /** Mod Bilal / azan when Amin's own sound (or vibrate only) is used: the notification itself is silent. */
+    const val CH_SILENT = "bilal_senyap"
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -25,6 +27,11 @@ object Notifier {
         })
         nm.createNotificationChannel(NotificationChannel(CH_REMIND, "Peringatan jadual", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "Peringatan 20 minit sebelum jadual"
+        })
+        nm.createNotificationChannel(NotificationChannel(CH_SILENT, "Mod Bilal (bunyi sendiri)", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Mod Bilal dan azan bila bunyi sendiri atau getar sahaja dipilih"
+            setSound(null, null)
+            enableVibration(false)
         })
         nm.createNotificationChannel(NotificationChannel(CH_BRIEF, "Taklimat dan check-in", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Taklimat pagi dan check-in petang"
@@ -42,15 +49,15 @@ object Notifier {
         return PendingIntent.getActivity(context, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    fun show(context: Context, e: Event, body: String) {
+    fun show(context: Context, e: Event, body: String, silent: Boolean = false) {
         ensureChannels(context)
         val id = idFor(e.key)
         val channel = when (e.kind) {
-            Kind.BILAL, Kind.TANYA -> CH_BILAL
+            Kind.BILAL, Kind.TANYA, Kind.AZAN -> if (silent || e.kind == Kind.AZAN) CH_SILENT else CH_BILAL
             Kind.JADUAL -> CH_REMIND
-            Kind.BRIEF, Kind.CHECKIN -> CH_BRIEF
+            Kind.BRIEF, Kind.CHECKIN, Kind.WEEKLY -> CH_BRIEF
         }
-        val route = if (e.kind == Kind.BILAL || e.kind == Kind.TANYA) "#/hari-ini" else "#/chat/utama"
+        val route = if (e.kind == Kind.BILAL || e.kind == Kind.TANYA || e.kind == Kind.AZAN) "#/hari-ini" else "#/chat/utama"
         val b = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_stat_moon)
             .setContentTitle(e.title)
@@ -86,6 +93,19 @@ object Notifier {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
         notify(context, id, b)
+    }
+
+    /** Spending limit warning (Phase 6.1). */
+    fun showBudget(context: Context, key: String, body: String) {
+        ensureChannels(context)
+        val id = idFor(key)
+        notify(context, id, NotificationCompat.Builder(context, CH_REMIND)
+            .setSmallIcon(R.drawable.ic_stat_moon)
+            .setContentTitle("Had belanja")
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp(context, "#/catatan/belanja", id))
+            .setAutoCancel(true))
     }
 
     fun showTest(context: Context) {
