@@ -45,3 +45,12 @@ describe("AI providers (phase 5.1)", () => {
     expect(Ai.IDS).toEqual(["gemini", "claude", "openai"]);
   });
 });
+
+describe("chat room AI choice", () => {
+  it("puts the room's provider first, Auto keeps the role", () => {
+    const keys = { gemini: true, claude: true, openai: true };
+    expect(Ai.chain({}, "chat", { keys, prefer: "openai" })).toEqual(["openai", "gemini", "claude"]);
+    expect(Ai.chain({}, "chat", { keys, prefer: "auto" })).toEqual(["gemini", "claude", "openai"]);
+    expect(Ai.active({ ai: { providers: { claude: { on: false } } } }, keys)).toEqual(["gemini", "openai"]);
+  });
+});

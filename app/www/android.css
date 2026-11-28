@@ -22,3 +22,36 @@ button[disabled] { opacity: 0.5; }
 .lampu.merah { background: #e8706a; box-shadow: 0 0 10px rgba(232,112,106,.7); }
 .ok-teks { color: #8fd6a8; }
 details summary { cursor: pointer; padding: 6px 0; }
+
+/* ---------- Phase 5.2 ---------- */
+
+/* Performance: blur only on the bar, drawer, sheets, composer and moon. Everything else is solid tinted glass. */
+.panel, .gcard, .msg.asbab, .rail { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.panel, .gcard { background: linear-gradient(160deg, rgba(20,26,52,0.86), rgba(12,16,36,0.80)); }
+.msg.asbab { background: rgba(12,16,36,0.78); }
+body.ringan #scene *, body.ringan #scene { animation-play-state: paused !important; }
+body.ringan .leaf, body.ringan .firefly { display: none !important; }
+
+/* Keyboard open: hide the bottom bar, only the composer rises. */
+body.papan-kekunci nav.bar { display: none; }
+body.papan-kekunci .composer { bottom: calc(8px + var(--kb, 0px)); }
+body.papan-kekunci main#view { padding-bottom: calc(96px + var(--kb, 0px)); }
+body.papan-kekunci #moonbtn { display: none; }
+
+/* Small buttons, chat AI picker, links under messages */
+.btn.kecil { min-height: 36px; padding: 6px 12px; font-size: .85rem; }
+.ai-pilih { margin-left: auto; font-size: .85rem; }
+.msg-pautan { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.sheet .pilihan { display: grid; gap: 2px; width: 100%; text-align: left; padding: 12px 14px; min-height: 48px; border-radius: 14px; border: 1px solid var(--garis); background: rgba(255,255,255,0.04); color: inherit; }
+.sheet .pilihan.dipilih { border-color: var(--aksen); background: rgba(232,131,107,0.14); }
+
+/* Toast */
+.toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 92px + var(--sa-bottom)); transform: translate(-50%, 20px); opacity: 0; z-index: 70;
+  display: flex; gap: 12px; align-items: center; padding: 10px 12px 10px 16px; border-radius: 16px; max-width: calc(100% - 32px);
+  background: rgba(20,24,44,0.95); border: 1px solid var(--garis); box-shadow: 0 10px 30px rgba(0,0,0,.35); transition: opacity .25s, transform .25s; }
+.toast.muncul { opacity: 1; transform: translate(-50%, 0); }
+
+/* Notes: swipe left to delete, long press for Edit/Padam */
+.note { position: relative; touch-action: pan-y; transition: transform .2s ease, opacity .2s ease; }
+.note.leret { transition: none; }
+.note.sorot { outline: 2px solid var(--aksen); outline-offset: 4px; border-radius: 10px; }

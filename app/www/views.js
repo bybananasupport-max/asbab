@@ -551,10 +551,20 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   });
 
   /* ================= CATATAN ================= */
-  async function notes(view) {
+  async function notes(view, wantTab, noteId) {
     Scene.setScene("sungai");
     const { notes: all, devlog } = await A.api("notes");
+    // Links from chat: #/catatan/<semua|jadual|belanja|idea>/<id> open that tab and that note.
+    const linked = { semua: "pustaka", jadual: "pustaka", belanja: "belanja", idea: "idea" }[wantTab];
+    if (linked) localStorage.setItem("asbab:tab", linked);
     const tab = localStorage.getItem("asbab:tab") || "pustaka";
+    if (noteId) setTimeout(() => {
+      const n = all.find((x) => x.id === noteId);
+      if (!n) return;
+      const row = document.querySelector(`[data-note="${noteId}"]`);
+      if (row) { row.scrollIntoView({ block: "center" }); row.classList.add("sorot"); }
+      openNote(n);
+    }, 350);
     const tabs = [["pustaka", "Pustaka"], ["idea", "Bank Idea"], ["belanja", "Belanja"], ["perkembangan", "Perkembangan Asbab"]];
     const body = h("div", { class: "stack" });
     view.append(h("div", { class: "wrap stack" },
@@ -575,10 +585,70 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
     if (tab === "perkembangan") body.append(h("div", { class: "panel" }, ...devlog.map((d) => h("div", { class: "note" }, h("span", { class: "jenis" }, new Date(d.ts).toLocaleDateString("ms-MY")), h("span", { class: "tajuk" }, d.text)))));
   }
 
+  /* ---------- Note actions (Phase 5.2): open, edit, delete with undo ---------- */
+  async function deleteNote(n, row) {
+    const r = await A.api(`notes/${n.id}`, { method: "DELETE" });
+    if (row) { row.style.opacity = "0"; setTimeout(() => row.remove(), 200); }
+    buzz(20);
+    A.toast("Catatan dipadam", { action: { label: "Batal", fn: async () => {
+      await A.api("notes/restore", { method: "POST", body: { note: r.note || n } });
+      route();
+    } } });
+  }
+
+  function editNote(n) {
+    sheetForm("Edit catatan", [
+      field("Jenis", "kind", { tag: "select", value: n.kind, options: [["nota", "Nota"], ["jadual", "Jadual"], ["idea", "Idea"], ["makan", "Makan"], ["belanja", "Belanja"], ["log", "Log"]] }),
+      field("Tajuk", "title", { value: n.title, required: true }),
+      field("Butiran", "text", { tag: "textarea", rows: 3, value: n.text || "" }),
+      field("Tarikh", "date", { type: "date", value: n.date }),
+      field("Masa", "time", { type: "time", value: n.time || "" }),
+      field("Jumlah RM (untuk belanja)", "amount", { type: "number", step: "0.01", value: n.amount ?? "" }),
+    ], async (d) => { await A.api(`notes/${n.id}`, { method: "PATCH", body: d }); A.toast("Disimpan"); route(); });
+  }
+
+  // Opens one note: what Asbab saved, with Edit and Padam.
+  function openNote(n) {
+    const s = A.sheet(n.title,
+      h("p", { class: "muted" }, `${n.kind} · ${n.date}${n.time ? " " + n.time : ""}${n.amount ? " · " + rm(n.amount) : ""}`),
+      n.text && n.text !== n.title ? h("p", { style: { whiteSpace: "pre-wrap" } }, n.text) : null,
+      h("div", { class: "row" },
+        h("button", { class: "btn", onclick: () => { s.close(); editNote(n); } }, "Edit"),
+        h("button", { class: "btn bahaya", onclick: () => { s.close(); deleteNote(n, document.querySelector(`[data-note="${n.id}"]`)); } }, "Padam")));
+  }
+
+  function longPressMenu(n, row) {
+    buzz(15);
+    const s = A.sheet(n.title,
+      h("button", { class: "pilihan", onclick: () => { s.close(); editNote(n); } }, h("strong", {}, "Edit")),
+      h("button", { class: "pilihan", onclick: () => { s.close(); deleteNote(n, row); } }, h("strong", { style: { color: "var(--bahaya)" } }, "Padam")));
+  }
+
+  // Swipe left to delete; long press for Edit/Padam; tap to open.
   function noteRow(n) {
-    return h("div", { class: "note" },
-      h("span", { class: "jenis" }, n.kind), h("span", { class: "tajuk" }, `${n.time ? n.time + "  " : ""}${n.title}${n.amount ? "  " + rm(n.amount) : ""}`),
-      h("button", { "aria-label": `Padam ${n.title}`, onclick: async (e) => { await A.api(`notes/${n.id}`, { method: "DELETE" }); e.target.closest(".note").remove(); } }, "×"));
+    const row = h("div", { class: "note", "data-note": n.id },
+      h("span", { class: "jenis" }, n.kind), h("span", { class: "tajuk" }, `${n.time ? n.time + "  " : ""}${n.title}${n.amount ? "  " + rm(n.amount) : ""}`));
+    let x0 = 0, y0 = 0, dx = 0, timer = null, moved = false, pressed = false;
+    row.addEventListener("pointerdown", (e) => {
+      x0 = e.clientX; y0 = e.clientY; dx = 0; moved = false; pressed = false;
+      timer = setTimeout(() => { pressed = true; longPressMenu(n, row); }, 550);
+    });
+    row.addEventListener("pointermove", (e) => {
+      const ddx = e.clientX - x0, ddy = e.clientY - y0;
+      if (Math.abs(ddx) > 8 || Math.abs(ddy) > 8) { moved = true; clearTimeout(timer); }
+      if (Math.abs(ddx) > Math.abs(ddy) && ddx < 0) { dx = ddx; row.classList.add("leret"); row.style.transform = `translateX(${dx}px)`; }
+    });
+    const end = () => {
+      clearTimeout(timer);
+      row.classList.remove("leret");
+      if (dx < -90) { row.style.transform = "translateX(-110%)"; deleteNote(n, row); }
+      else { row.style.transform = ""; if (!moved && !pressed) openNote(n); }
+      dx = 0;
+    };
+    row.addEventListener("pointerup", end);
+    row.addEventListener("pointercancel", () => { clearTimeout(timer); row.classList.remove("leret"); row.style.transform = ""; dx = 0; });
+    row.addEventListener("contextmenu", (e) => e.preventDefault());
+    return row;
   }
 
   function pustaka(body, all) {

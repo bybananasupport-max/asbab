@@ -59,7 +59,7 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     aiDailyCap: 60,
     modelLight: "claude-haiku-5-5",
     modelHeavy: "claude-sonnet-5-5",
-    animations: "penuh",
+    animations: "ringan", // moving background effects OFF by default (Phase 5.2)
     sound: false,
     priorities: ["Solat", "Kecemasan client dan website down", "Kelas dan tugasan", "Bisnes", "Lain-lain"],
     personality: PERSONALITY,
