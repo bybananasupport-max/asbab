@@ -8,7 +8,8 @@
     malam:   { top: "#070b1a", bot: "#1b2547", far: "#141b36", near: "#0a0f22", glow: "#ede6cf" },
   };
 
-  const reduce = () => document.body.classList.contains("ringan") || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Still when moving effects are off, or when the scene is not the chosen wallpaper (Phase 6 default = gradient).
+  const reduce = () => document.body.classList.contains("ringan") || !document.body.classList.contains("guna-alam") || matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---------- Bulan ----------
   function moonPhase(d = new Date()) {

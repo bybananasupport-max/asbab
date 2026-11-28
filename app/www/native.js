@@ -194,7 +194,17 @@
     a.click();
   }
 
+  // Theme colours for the floating moon over other apps (Phase 6).
+  let lastTheme = "";
+  function rememberTheme(c) {
+    const v = JSON.stringify(c);
+    if (!Asbab || v === lastTheme) return;
+    lastTheme = v;
+    Asbab.dbPut({ key: "_ui:theme", value: v }).catch(() => {});
+  }
+
   window.Native = {
+    rememberTheme,
     workSync, checkSites, backupNow, backupStatus, shareFile,
     ai, aiListModels, aiTest, aiUsage,
     github, secretStatus, secretSet, testClaude, testGithub, claude, accessStatus, setPaused, serviceSync, ingestClear,

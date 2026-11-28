@@ -32,7 +32,17 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        applyTextZoom();
         Overlay.setAppVisible(this, true);
+    }
+
+    /** Respect the phone's text size setting (Phase 6): the web UI uses rem units, so text zoom scales it. */
+    private void applyTextZoom() {
+        try {
+            float scale = getResources().getConfiguration().fontScale;
+            getBridge().getWebView().getSettings().setTextZoom(Math.round(scale * 100));
+        } catch (Exception ignored) {
+        }
     }
 
     @Override

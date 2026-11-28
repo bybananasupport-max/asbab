@@ -145,10 +145,23 @@ object Overlay {
 
     /* ---------- the rail ---------- */
 
+    /** Closes in reverse order: last icon first, then the rail folds back and the dimmed background clears. */
     private fun closeRail() {
-        railRoot?.let { r -> try { wm?.removeView(r) } catch (e: Exception) {} }
+        val r = railRoot ?: return
         railRoot = null
-        bubble?.visibility = View.VISIBLE
+        val rail = r.getChildAt(0) as? LinearLayout
+        if (rail != null) {
+            val n = rail.childCount
+            for (i in 0 until n) rail.getChildAt(i).animate().alpha(0f).scaleX(0.6f).scaleY(0.6f).setStartDelay((n - 1 - i) * 22L).setDuration(160).start()
+            rail.animate().scaleY(0.25f).setStartDelay(120).setDuration(220).start()
+        }
+        (r.background as? android.graphics.drawable.ColorDrawable)?.let { bg ->
+            ValueAnimator.ofInt(bg.alpha, 0).apply { duration = 300; addUpdateListener { bg.alpha = it.animatedValue as Int }; start() }
+        }
+        main.postDelayed({
+            try { wm?.removeView(r) } catch (e: Exception) {}
+            bubble?.visibility = View.VISIBLE
+        }, 340)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -165,6 +178,9 @@ object Overlay {
         val current = Bubble.current(repo.db.get("_ui:route"))
 
         val root = FrameLayout(app)
+        // Dimmed background behind the open rail.
+        root.background = android.graphics.drawable.ColorDrawable(Color.BLACK).apply { alpha = 0 }
+        ValueAnimator.ofInt(0, 100).apply { duration = 280; addUpdateListener { (root.background as android.graphics.drawable.ColorDrawable).alpha = it.animatedValue as Int }; start() }
         root.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) closeRail(); true }
         val rail = LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -173,7 +189,7 @@ object Overlay {
             setPadding(0, pad, 0, pad)
             background = GradientDrawable().apply {
                 cornerRadius = dp(app, 34f)
-                setColor(Color.argb(225, 16, 22, 48))
+                setColor(Color.argb(215, 16, 22, 48))
                 setStroke(dp(app, 1f).toInt(), Color.argb(70, 255, 255, 255))
             }
             elevation = dp(app, 12f)
@@ -203,7 +219,9 @@ object Overlay {
         rail.pivotX = railW / 2f
         rail.post { rail.pivotY = if (up) rail.height.toFloat() else 0f }
         rail.scaleY = 0.25f
-        rail.animate().scaleY(1f).setDuration(380).setInterpolator(DecelerateInterpolator(1.6f)).start()
+        // Soft bounce as it stretches out; the moon spins.
+        rail.animate().scaleY(1f).setDuration(460).setInterpolator(android.view.animation.OvershootInterpolator(1.4f)).start()
+        views.firstOrNull { it is MoonView }?.let { m -> m.rotation = -200f; m.animate().rotation(0f).setDuration(600).setInterpolator(android.view.animation.OvershootInterpolator(1.2f)).start() }
         views.forEachIndexed { i, v ->
             v.alpha = 0f; v.scaleX = 0.6f; v.scaleY = 0.6f
             v.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(60L + i * 35L).setDuration(240).start()
@@ -301,21 +319,43 @@ object Overlay {
 
     private val MOON = Color.rgb(237, 230, 207)
 
-    /** Glass circle with the moon at today's real phase. */
+    /** Theme colours chosen in the app (Wallpaper & Rupa), shared through the database. */
+    private fun themeColours(c: Context): IntArray = try {
+        val o = JSONObject(Repo(c).db.get("_ui:theme") ?: "{}")
+        intArrayOf(Color.parseColor(o.optString("glow1", "#3b5bdb")), Color.parseColor(o.optString("aksen", "#63e6be")), Color.parseColor(o.optString("glow2", "#12b886")))
+    } catch (e: Exception) {
+        intArrayOf(Color.rgb(59, 91, 219), Color.rgb(99, 230, 190), Color.rgb(18, 184, 134))
+    }
+
+    /** See-through glass circle with a slowly turning gradient frame in the theme colours, and a softly glowing moon. */
     class MoonView(c: Context) : View(c) {
         private val glass = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.argb(80, 255, 255, 255) }
+        private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+        private val halo = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val colours = themeColours(c)
+        private var angle = 0f
+        private val spin = ValueAnimator.ofFloat(0f, 360f).apply {
+            duration = 6000; repeatCount = ValueAnimator.INFINITE; interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { angle = it.animatedValue as Float; invalidate() }
+        }
+        override fun onAttachedToWindow() { super.onAttachedToWindow(); spin.start() }
+        override fun onDetachedFromWindow() { spin.cancel(); super.onDetachedFromWindow() }
         private val dark = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(70, 237, 230, 207) }
         private val lit = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = MOON }
 
         override fun onDraw(canvas: Canvas) {
             val w = width.toFloat(); val cx = w / 2; val cy = height / 2f
             val r = minOf(w, height.toFloat()) / 2 - 2
-            glass.shader = android.graphics.RadialGradient(cx, cy * 0.7f, r * 1.3f, Color.argb(215, 40, 52, 92), Color.argb(225, 10, 14, 32), android.graphics.Shader.TileMode.CLAMP)
+            glass.shader = android.graphics.RadialGradient(cx, cy * 0.7f, r * 1.3f, Color.argb(150, 40, 52, 92), Color.argb(170, 10, 14, 32), android.graphics.Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, r, glass)
-            rim.strokeWidth = r * 0.05f
+            rim.strokeWidth = r * 0.07f
+            rim.shader = android.graphics.SweepGradient(cx, cy, intArrayOf(colours[0], colours[1], colours[2], colours[0]), null).apply {
+                setLocalMatrix(android.graphics.Matrix().apply { setRotate(angle, cx, cy) })
+            }
             canvas.drawCircle(cx, cy, r - rim.strokeWidth / 2, rim)
             val mr = r * 0.62f
+            halo.shader = android.graphics.RadialGradient(cx, cy, mr * 1.6f, Color.argb(70, 255, 240, 200), Color.TRANSPARENT, android.graphics.Shader.TileMode.CLAMP)
+            canvas.drawCircle(cx, cy, mr * 1.6f, halo)
             canvas.drawCircle(cx, cy, mr, dark)
             canvas.drawPath(litPath(Bubble.moonPhase(System.currentTimeMillis()), cx, cy, mr), lit)
         }
