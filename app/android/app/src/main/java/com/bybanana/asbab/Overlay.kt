@@ -85,7 +85,7 @@ object Overlay {
         if (bubble != null) { bubble?.invalidate(); return }
         ctx = app
         val w = app.getSystemService(WindowManager::class.java).also { wm = it }
-        val size = dp(app, 58f).toInt()
+        val size = dp(app, 60f).toInt()
         val dm = app.resources.displayMetrics
         val pos = try { JSONObject(Repo(app).db.get("_bubble:pos") ?: "{}") } catch (e: Exception) { JSONObject() }
         val lp = WindowManager.LayoutParams(
@@ -94,7 +94,7 @@ object Overlay {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = pos.optInt("x", dm.widthPixels - size - dp(app, 6f).toInt())
+            x = pos.optInt("x", dm.widthPixels - size - dp(app, 12f).toInt())
             y = pos.optInt("y", (dm.heightPixels * 0.55).toInt())
         }
         val v = MoonView(app)
@@ -128,10 +128,10 @@ object Overlay {
             Repo(app).db.put("_bubble:hidden", "1")
             v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
             remove()
-            Toast.makeText(app, "Butang bulan tidur. Tunjuk semula dalam Asbab > Tetapan > Butang Terapung.", Toast.LENGTH_LONG).show()
+            Toast.makeText(app, "Butang bulan tidur. Tunjuk semula dalam Asbab > Tetapan > Butang bulan terapung.", Toast.LENGTH_LONG).show()
             return
         }
-        val margin = dp(app, 6f).toInt()
+        val margin = dp(app, 12f).toInt()
         val targetX = if (Bubble.snapLeft(cx, dm.widthPixels)) margin else dm.widthPixels - size - margin
         lp.y = lp.y.coerceIn(dp(app, 24f).toInt(), dm.heightPixels - size - dp(app, 24f).toInt())
         ValueAnimator.ofInt(lp.x, targetX).apply {
@@ -152,8 +152,18 @@ object Overlay {
         val rail = r.getChildAt(0) as? LinearLayout
         if (rail != null) {
             val n = rail.childCount
-            for (i in 0 until n) rail.getChildAt(i).animate().alpha(0f).scaleX(0.6f).scaleY(0.6f).setStartDelay((n - 1 - i) * 22L).setDuration(160).start()
-            rail.animate().scaleY(0.25f).setStartDelay(120).setDuration(220).start()
+            // Reverse order, 16 ms apart, then the glass shrinks back into the moon.
+            for (i in 0 until n) rail.getChildAt(i).let { v ->
+                if (v is MoonView) v.animate().rotation(0f).scaleX(1f).scaleY(1f).setDuration(400).start()
+                else v.animate().alpha(0f).scaleX(0.4f).scaleY(0.4f).setStartDelay((n - 1 - i) * 16L).setDuration(220).start()
+            }
+            (rail.tag as? ValueAnimator)?.cancel()
+            val from = (rail.getTag(R_GROW) as? Float) ?: 1f
+            ValueAnimator.ofFloat(from, 0f).apply {
+                startDelay = 80; duration = 420; interpolator = android.view.animation.PathInterpolator(0.4f, 0f, 0.2f, 1f)
+                addUpdateListener { rail.setTag(R_GROW, it.animatedValue as Float); rail.invalidateOutline() }
+                start()
+            }
         }
         (r.background as? android.graphics.drawable.ColorDrawable)?.let { bg ->
             ValueAnimator.ofInt(bg.alpha, 0).apply { duration = 300; addUpdateListener { bg.alpha = it.animatedValue as Int }; start() }
@@ -161,7 +171,7 @@ object Overlay {
         main.postDelayed({
             try { wm?.removeView(r) } catch (e: Exception) {}
             bubble?.visibility = View.VISIBLE
-        }, 340)
+        }, 520)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -172,7 +182,7 @@ object Overlay {
         val repo = Repo(app)
         val s = repo.settings()
         val dm = app.resources.displayMetrics
-        val size = dp(app, 58f).toInt()
+        val size = dp(app, 60f).toInt()
         val up = Bubble.opensUp(lp0.y + size / 2f, dm.heightPixels)
         val items = Bubble.items(try { JSONObject(repo.db.get("settings") ?: "{}").optJSONArray("bubbleItems") } catch (e: Exception) { null })
         val current = Bubble.current(repo.db.get("_ui:route"))
@@ -180,26 +190,30 @@ object Overlay {
         val root = FrameLayout(app)
         // Dimmed background behind the open rail.
         root.background = android.graphics.drawable.ColorDrawable(Color.BLACK).apply { alpha = 0 }
-        ValueAnimator.ofInt(0, 100).apply { duration = 280; addUpdateListener { (root.background as android.graphics.drawable.ColorDrawable).alpha = it.animatedValue as Int }; start() }
+        ValueAnimator.ofInt(0, 64).apply { duration = 350; addUpdateListener { (root.background as android.graphics.drawable.ColorDrawable).alpha = it.animatedValue as Int }; start() }
         root.setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) closeRail(); true }
         val rail = LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            val pad = dp(app, 8f).toInt()
+            val pad = dp(app, 5f).toInt()
             setPadding(0, pad, 0, pad)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(app, 34f)
-                setColor(Color.argb(215, 16, 22, 48))
-                setStroke(dp(app, 1f).toInt(), Color.argb(70, 255, 255, 255))
+            // Same look as the in-app button: see-through glass in the theme's background colour, thin ring in the accent colour.
+            val tc = themeColours(app)
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
+                Color.argb(215, Color.red(tc[3]), Color.green(tc[3]), Color.blue(tc[3])),
+                Color.argb(195, Color.red(tc[3]), Color.green(tc[3]), Color.blue(tc[3])),
+            )).apply {
+                cornerRadius = dp(app, 32f)
+                setStroke(dp(app, 1.5f).toInt(), Color.argb(200, Color.red(tc[1]), Color.green(tc[1]), Color.blue(tc[1])))
             }
-            elevation = dp(app, 12f)
+            elevation = dp(app, 14f)
             isClickable = true
         }
         val views = mutableListOf<View>()
         val ordered = if (up) items.reversed() else items
         for (id in ordered) views += itemViews(app, repo, s, id, id == current)
         for (v in views) rail.addView(v)
-        val railW = dp(app, 64f).toInt()
+        val railW = dp(app, 60f).toInt()
         val left = (lp0.x - (railW - size) / 2).coerceIn(dp(app, 4f).toInt(), dm.widthPixels - railW - dp(app, 4f).toInt())
         val params = FrameLayout.LayoutParams(railW, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
             gravity = if (up) Gravity.BOTTOM or Gravity.START else Gravity.TOP or Gravity.START
@@ -216,20 +230,39 @@ object Overlay {
         try { w.addView(root, rootLp) } catch (e: Exception) { return }
         railRoot = root
         bubble?.visibility = View.INVISIBLE
-        rail.pivotX = railW / 2f
-        rail.post { rail.pivotY = if (up) rail.height.toFloat() else 0f }
-        rail.scaleY = 0.25f
-        // Soft bounce as it stretches out; the moon spins.
-        rail.animate().scaleY(1f).setDuration(460).setInterpolator(android.view.animation.OvershootInterpolator(1.4f)).start()
-        views.firstOrNull { it is MoonView }?.let { m -> m.rotation = -200f; m.animate().rotation(0f).setDuration(600).setInterpolator(android.view.animation.OvershootInterpolator(1.2f)).start() }
+        // The glass grows out of the moon (a rounded clip that gets taller with a soft overshoot),
+        // the moon turns -200 degrees and shrinks a little, and the buttons appear 28 ms apart.
+        val radius = dp(app, 32f)
+        rail.setTag(R_GROW, 0f)
+        rail.outlineProvider = object : android.view.ViewOutlineProvider() {
+            override fun getOutline(v: View, o: android.graphics.Outline) {
+                val f = (v.getTag(R_GROW) as? Float) ?: 1f
+                val hgt = (size + (v.height - size) * f).toInt().coerceIn(size, v.height.coerceAtLeast(size))
+                if (up) o.setRoundRect(0, v.height - hgt, v.width, v.height, radius) else o.setRoundRect(0, 0, v.width, hgt, radius)
+            }
+        }
+        rail.clipToOutline = true
+        val grow = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 500; interpolator = android.view.animation.PathInterpolator(0.2f, 0.9f, 0.25f, 1.12f)
+            addUpdateListener { rail.setTag(R_GROW, (it.animatedValue as Float).coerceAtMost(1f)); rail.invalidateOutline() }
+        }
+        rail.tag = grow
+        rail.post { grow.start() }
+        val n = views.size
         views.forEachIndexed { i, v ->
-            v.alpha = 0f; v.scaleX = 0.6f; v.scaleY = 0.6f
-            v.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(60L + i * 35L).setDuration(240).start()
+            if (v is MoonView) {
+                v.animate().rotation(-200f).scaleX(0.82f).scaleY(0.82f).setDuration(450).setInterpolator(android.view.animation.PathInterpolator(0.2f, 0.9f, 0.25f, 1.2f)).start()
+            } else {
+                v.alpha = 0f; v.scaleX = 0.4f; v.scaleY = 0.4f; v.translationY = dp(app, 8f) * (if (up) -1 else 1)
+                val order = if (up) n - 1 - i else i
+                v.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setStartDelay(order * 28L).setDuration(350)
+                    .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0.9f, 0.25f, 1.3f)).start()
+            }
         }
     }
 
     private fun itemViews(app: Context, repo: Repo, s: com.bybanana.asbab.core.Settings, id: String, active: Boolean): List<View> {
-        val big = dp(app, 46f).toInt()
+        val big = dp(app, 44f).toInt()
         val gap = dp(app, 3f).toInt()
         fun lp(sz: Int) = LinearLayout.LayoutParams(sz, sz).apply { topMargin = gap; bottomMargin = gap }
         fun icon(name: String, label: String, onTap: () -> Unit) = IconView(app, name, active).apply {
@@ -237,18 +270,16 @@ object Overlay {
             setOnClickListener { performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP); onTap() }
         }
         return when (id) {
-            "tutup" -> listOf(MoonView(app).apply { layoutParams = lp(big); contentDescription = "Tutup"; setOnClickListener { closeRail() } })
+            "tutup" -> listOf(MoonView(app, bare = true).apply { layoutParams = lp(big); contentDescription = "Tutup"; setOnClickListener { closeRail() } })
             "suara" -> listOf(icon("mic", "Arahan suara") { closeRail(); start(app, Intent(app, VoiceActivity::class.java)) })
             "chat" -> listOf(icon("chat", "Chat") { go(app, "#/chat/utama") })
             "hari" -> listOf(icon("hari", "Hari Ini") { go(app, "#/hari-ini") })
             "project" -> listOf(icon("project", "Project") { go(app, "#/project") })
             "catatan" -> listOf(icon("catatan", "Catatan") { go(app, "#/catatan") })
-            "tetapan" -> listOf(ProfileView(app, s.name.take(1).uppercase(), active).apply {
-                layoutParams = lp(big); contentDescription = "Tetapan"; setOnClickListener { go(app, "#/tetapan") }
-            })
+            "tetapan" -> listOf(icon("tetapan", "Tetapan") { go(app, "#/tetapan") })
             "pemisah" -> listOf(View(app).apply {
                 layoutParams = LinearLayout.LayoutParams(dp(app, 22f).toInt(), dp(app, 2f).toInt()).apply { topMargin = gap * 2; bottomMargin = gap * 2 }
-                background = GradientDrawable().apply { cornerRadius = dp(app, 1f); setColor(Color.argb(55, 255, 255, 255)) }
+                background = GradientDrawable().apply { cornerRadius = dp(app, 1f); setColor(Color.argb(64, 255, 255, 255)) }
             })
             "projek" -> recentProjects(repo).map { (pid, name, color, alert) ->
                 DotView(app, color, alert).apply {
@@ -322,20 +353,23 @@ object Overlay {
     /** Theme colours chosen in the app (Wallpaper & Rupa), shared through the database. */
     private fun themeColours(c: Context): IntArray = try {
         val o = JSONObject(Repo(c).db.get("_ui:theme") ?: "{}")
-        intArrayOf(Color.parseColor(o.optString("glow1", "#3b5bdb")), Color.parseColor(o.optString("aksen", "#63e6be")), Color.parseColor(o.optString("glow2", "#12b886")))
+        intArrayOf(Color.parseColor(o.optString("glow1", "#8b7cf0")), Color.parseColor(o.optString("aksen", "#5fd3c0")), Color.parseColor(o.optString("glow2", "#2e9c8f")), Color.parseColor(o.optString("bg", "#0b1022")))
     } catch (e: Exception) {
-        intArrayOf(Color.rgb(59, 91, 219), Color.rgb(99, 230, 190), Color.rgb(18, 184, 134))
+        intArrayOf(Color.rgb(139, 124, 240), Color.rgb(95, 211, 192), Color.rgb(46, 156, 143), Color.rgb(11, 16, 34))
     }
 
+    /** View tag key for how far the rail has grown (0 = just the moon, 1 = fully open). */
+    private val R_GROW = R.id.asbab_grow
+
     /** See-through glass circle with a slowly turning gradient frame in the theme colours, and a softly glowing moon. */
-    class MoonView(c: Context) : View(c) {
+    class MoonView(c: Context, private val bare: Boolean = false) : View(c) {
         private val glass = Paint(Paint.ANTI_ALIAS_FLAG)
         private val rim = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
         private val halo = Paint(Paint.ANTI_ALIAS_FLAG)
         private val colours = themeColours(c)
         private var angle = 0f
         private val spin = ValueAnimator.ofFloat(0f, 360f).apply {
-            duration = 6000; repeatCount = ValueAnimator.INFINITE; interpolator = android.view.animation.LinearInterpolator()
+            duration = 8000; repeatCount = ValueAnimator.INFINITE; interpolator = android.view.animation.LinearInterpolator()
             addUpdateListener { angle = it.animatedValue as Float; invalidate() }
         }
         override fun onAttachedToWindow() { super.onAttachedToWindow(); spin.start() }
@@ -346,14 +380,19 @@ object Overlay {
         override fun onDraw(canvas: Canvas) {
             val w = width.toFloat(); val cx = w / 2; val cy = height / 2f
             val r = minOf(w, height.toFloat()) / 2 - 2
-            glass.shader = android.graphics.RadialGradient(cx, cy * 0.7f, r * 1.3f, Color.argb(150, 40, 52, 92), Color.argb(170, 10, 14, 32), android.graphics.Shader.TileMode.CLAMP)
-            canvas.drawCircle(cx, cy, r, glass)
-            rim.strokeWidth = r * 0.07f
-            rim.shader = android.graphics.SweepGradient(cx, cy, intArrayOf(colours[0], colours[1], colours[2], colours[0]), null).apply {
-                setLocalMatrix(android.graphics.Matrix().apply { setRotate(angle, cx, cy) })
+            if (!bare) {
+                val bg = colours[3]
+                glass.shader = android.graphics.LinearGradient(0f, 0f, w * 0.6f, height.toFloat(),
+                    Color.argb(205, (Color.red(bg) + 56).coerceAtMost(255), (Color.green(bg) + 56).coerceAtMost(255), (Color.blue(bg) + 56).coerceAtMost(255)),
+                    Color.argb(190, Color.red(bg), Color.green(bg), Color.blue(bg)), android.graphics.Shader.TileMode.CLAMP)
+                canvas.drawCircle(cx, cy, r, glass)
+                rim.strokeWidth = r * 0.055f
+                rim.shader = android.graphics.SweepGradient(cx, cy, intArrayOf(colours[1], colours[0], colours[2], colours[1]), null).apply {
+                    setLocalMatrix(android.graphics.Matrix().apply { setRotate(angle, cx, cy) })
+                }
+                canvas.drawCircle(cx, cy, r - rim.strokeWidth / 2, rim)
             }
-            canvas.drawCircle(cx, cy, r - rim.strokeWidth / 2, rim)
-            val mr = r * 0.62f
+            val mr = r * 0.52f
             halo.shader = android.graphics.RadialGradient(cx, cy, mr * 1.6f, Color.argb(70, 255, 240, 200), Color.TRANSPARENT, android.graphics.Shader.TileMode.CLAMP)
             canvas.drawCircle(cx, cy, mr * 1.6f, halo)
             canvas.drawCircle(cx, cy, mr, dark)
@@ -483,6 +522,10 @@ object Icons {
             "lampu" -> {
                 poly(c, p, true, 8f, 2f, 16f, 2f, 16f, 7f, 14f, 10f, 14f, 22f, 10f, 22f, 10f, 10f, 8f, 7f)
                 line(c, p, 12f, 13f, 12f, 15f)
+            }
+            "tetapan" -> {
+                circle(c, 12f, 12f, 3f, p)
+                line(c, p, 12f, 2f, 12f, 5f, 12f, 19f, 12f, 22f, 2f, 12f, 5f, 12f, 19f, 12f, 22f, 12f)
             }
             "kunci" -> {
                 c.drawRoundRect(RectF(5f, 11f, 19f, 21f), 2f, 2f, p)

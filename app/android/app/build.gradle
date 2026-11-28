@@ -65,6 +65,8 @@ dependencies {
     implementation "androidx.work:work-runtime:2.10.0"
     // Phase 6.1: fingerprint / PIN lock
     implementation "androidx.biometric:biometric:1.1.0"
+    // Phase 6.2: reading receipts on the phone (no AI); the model comes from Google Play services
+    implementation "com.google.android.gms:play-services-mlkit-text-recognition:19.0.1"
     testImplementation "junit:junit:$junitVersion"
     // Real org.json for JVM unit tests (Android's built-in copy only exists on a phone).
     testImplementation "org.json:json:20240303"

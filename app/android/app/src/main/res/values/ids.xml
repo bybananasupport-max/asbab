@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- View tag used by the floating moon menu (Overlay.kt) for how far it has grown. -->
+    <item name="asbab_grow" type="id" />
+</resources>

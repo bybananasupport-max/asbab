@@ -63,6 +63,18 @@
     });
   }
 
+  // Attachment kinds each provider reads (same as ProviderSpec.reads in Kotlin, Phase 6.2).
+  const READS = { gemini: ["image", "pdf", "video"], claude: ["image", "pdf"], openai: ["image", "pdf"] };
+  const kindOf = (mime) => (/^image\//.test(mime) ? "image" : /^video\//.test(mime) ? "video" : mime === "application/pdf" ? "pdf" : "other");
+  // Chain for a message with attachments: only providers that read every kind. switchedFrom = the provider
+  // that would have answered but cannot read them (so Asbab can say which one it used instead).
+  function chainFor(s, role, opts = {}, kinds = []) {
+    const all = chain(s, role, opts);
+    if (!kinds.length) return { ids: all, switchedFrom: null };
+    const ids = all.filter((id) => kinds.every((k) => (READS[id] || []).includes(k)));
+    return { ids, switchedFrom: all[0] && all[0] !== ids[0] ? all[0] : null };
+  }
+
   // Is any second brain usable at all (switched on and has a key)?
   function ready(s, keys = {}) {
     if (s.aiEnabled === false) return false;
@@ -90,5 +102,5 @@
     return [...c.order, ...IDS].filter((id, i, a) => a.indexOf(id) === i && c.providers[id].on && keys[id]);
   }
 
-  return { PROVIDERS, IDS, DEFAULT_ORDER, byId, config, chain, ready, label, totalCap, active };
+  return { PROVIDERS, IDS, DEFAULT_ORDER, byId, config, chain, ready, label, totalCap, active , READS, kindOf, chainFor };
 });

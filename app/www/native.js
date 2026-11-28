@@ -53,7 +53,7 @@
         ok: false, current: info.version, needToken: !keys.github,
         message: keys.github
           ? "Token GitHub tiada akses ke repo Asbab, atau belum ada Release lagi. Pastikan token boleh baca repo bybananasupport-max/asbab."
-          : "Repo Asbab private, jadi semakan automatik perlukan token GitHub. Tampal token dalam Tetapan > Sambungan & API, atau buka halaman Release untuk semak sendiri.",
+          : "Repo Asbab private, jadi semakan automatik perlukan token GitHub. Tampal token dalam Tetapan > Sambungan dan API, atau buka halaman Release untuk semak sendiri.",
       };
     }
     if (r.status < 200 || r.status > 299) return { ok: false, current: info.version, message: r.message || `GitHub membalas ralat ${r.status}.` };
@@ -151,12 +151,13 @@
   }
 
   // Phase 5.1: several providers. The router in Kotlin picks the provider for the role and falls back.
-  async function ai({ role = "chat", system, prompt, maxTokens, prefer = "auto" }, onText) {
+  // Phase 6.2: parts = attachments [{mime, data (base64), name}]; id lets the "Berhenti" button stop it.
+  async function ai({ role = "chat", system, prompt, maxTokens, prefer = "auto", parts, id }, onText) {
     if (!Asbab) throw new Error("Otak kedua hanya berfungsi dalam app Android.");
-    const id = Math.random().toString(36).slice(2);
+    id = id || Math.random().toString(36).slice(2);
     const sub = await Asbab.addListener("aiDelta", (e) => { if (e.id === id) onText?.(e.text); });
     try {
-      return await Asbab.aiStream({ id, role, system, prompt, maxTokens, prefer });
+      return await Asbab.aiStream({ id, role, system, prompt, maxTokens, prefer, parts: parts && parts.length ? parts : undefined });
     } finally {
       sub.remove();
     }
@@ -209,7 +210,30 @@
   const soundStop = () => Asbab?.soundStop();
   const widgetUpdate = () => Asbab?.widgetUpdate().catch(() => {});
 
+  /* ---------- Phase 6.2: chat tools ---------- */
+  const aiStop = (id) => Asbab?.aiStop({ id }).catch(() => {});
+  // Attachments are kept on this phone only (files folder, never in the GitHub backup).
+  const memFiles = new Map();
+  const attachPut = (id, data) => (Asbab ? Asbab.attachPut({ id, data }) : Promise.resolve(memFiles.set(id, data)));
+  const attachGet = async (id) => (Asbab ? (await Asbab.attachGet({ id })).data || null : memFiles.get(id) || null);
+  // Text in a photo, read on the phone (no AI). {ok, text}
+  const ocr = (data) => (Asbab ? Asbab.ocr({ data }) : Promise.resolve({ ok: false, text: "" }));
+  async function copyText(text) {
+    if (Asbab) return Asbab.copyText({ text });
+    try { await navigator.clipboard.writeText(text); } catch {
+      const t = document.createElement("textarea"); t.value = text; document.body.append(t); t.select(); document.execCommand("copy"); t.remove();
+    }
+  }
+  async function shareText(text) {
+    if (Asbab) return Asbab.shareText({ text });
+    if (navigator.share) return navigator.share({ text });
+    return copyText(text);
+  }
+  // Lets a swipe from the left edge reach the page instead of Android's back gesture (chat screen only).
+  const edgeSwipe = (on) => Asbab?.edgeSwipe({ on }).catch(() => {});
+
   window.Native = {
+    aiStop, attachPut, attachGet, ocr, copyText, shareText, edgeSwipe,
     pickAudio, soundTest, soundStop, widgetUpdate,
     rememberTheme,
     workSync, checkSites, backupNow, backupStatus, shareFile,
