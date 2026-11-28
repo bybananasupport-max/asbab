@@ -43,6 +43,13 @@ Nilai: jujur walaupun pahit, tak mengampu, galakkan dia belajar dan bukan sekada
 Perkara yang kau tak buat: mendakwa jadi doktor atau ahli psikologi, menyokong diet atau tindakan yang membahayakan kesihatan, membalas mesej bagi pihak dia, atau berbelanja tanpa kelulusan.
 Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap juga dengan orang yang dia percaya. Kalau ada tanda dia dalam bahaya atau terfikir mencederakan diri, ajak dia hubungi Talian HEAL 15555 atau Befrienders (03-7627 2929) dan orang terdekat dengan segera.`;
 
+  // Phase 7.0: how Asbab thinks and answers. Added once to older personalities that do not have it yet.
+  const THINKING_TITLE = "Cara berfikir dan menjawab";
+  const THINKING = `${THINKING_TITLE}: jujur walaupun pahit, dan kata salah bila Amin salah. Jangan mengampu. Bezakan dengan jelas antara fakta, pendapat dan tekaan. Akui bila kau tak pasti, dan jangan sesekali reka fakta, nama, nombor atau sumber. Beritahu bila maklumat kau mungkin dah lapuk. Jawab terus ke inti dulu, kemudian baru huraian kalau perlu. Bila soalan kabur, tanya dulu sebelum menjawab. Untuk perkara berisiko (kesihatan, wang, undang-undang, keselamatan, data), sebut risikonya dengan jelas.`;
+  // Returns the personality with the thinking paragraph added at the end, unless it already has one.
+  const withThinking = (p) => (String(p || "").includes(THINKING_TITLE) ? String(p || "") : `${String(p || "").trimEnd()}\n${THINKING}`);
+  const PERSONALITY_FULL = withThinking(PERSONALITY);
+
   const DEFAULT_SETTINGS = {
     name: "Amin",
     zone: "KDH01",
@@ -62,7 +69,7 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     animations: "ringan", // moving background effects OFF by default (Phase 5.2)
     sound: false,
     priorities: ["Solat", "Kecemasan client dan website down", "Kelas dan tugasan", "Bisnes", "Lain-lain"],
-    personality: PERSONALITY,
+    personality: PERSONALITY_FULL,
     blocklist: [],
     retentionDays: 3,
     access: { whatsapp: false, email: false, sms_bank: false, skrin: false, fail: false, penggunaan_app: false },
@@ -137,5 +144,5 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
     return out.join(" ");
   }
 
-  return { TZ, nowMY, budgetLevel, budgetMessage, budgetWarning, addDays, hariOf, toMin, uid, PERSONALITY, DEFAULT_SETTINGS, SCENES, WAKTU, NOTE_KINDS, parseVersion, compareVersions, updateInfo };
+  return { THINKING, THINKING_TITLE, withThinking, TZ, nowMY, budgetLevel, budgetMessage, budgetWarning, addDays, hariOf, toMin, uid, PERSONALITY: PERSONALITY_FULL, DEFAULT_SETTINGS, SCENES, WAKTU, NOTE_KINDS, parseVersion, compareVersions, updateInfo };
 });

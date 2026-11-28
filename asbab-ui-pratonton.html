@@ -50,14 +50,14 @@ h1{font-size:1.55rem;font-weight:600;margin:4px 0 2px;letter-spacing:-.01em}
 .hantar{width:38px;height:38px;border-radius:50%;background:var(--teks);color:var(--bg);display:grid;place-items:center}
 
 /* laci & sheet */
-.tirai{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:20;opacity:0;pointer-events:none;transition:opacity .25s}
+.tirai{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:26;opacity:0;pointer-events:none;transition:opacity .25s}
 .tirai.buka{opacity:1;pointer-events:auto}
-.laci{position:fixed;top:0;bottom:0;left:0;width:min(300px,82%);z-index:21;padding:20px 14px;background:var(--kaca);border-right:1px solid var(--garis);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);transform:translateX(-105%);transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.laci{position:fixed;top:0;bottom:0;left:0;width:min(300px,82%);z-index:21;padding:20px 14px;background:var(--kaca);border-right:1px solid var(--garis);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);transform:translateX(-105%);z-index:27;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
 .laci.buka{transform:none}
 .laci .baru{width:100%;padding:11px;border-radius:14px;background:var(--teks);color:var(--bg);font-weight:600;margin:12px 0}
 .laci a{display:block;padding:10px 10px;border-radius:12px;color:inherit;text-decoration:none}
 .laci a.pilih{background:var(--kad)}
-.sheet{position:fixed;left:50%;bottom:0;transform:translate(-50%,105%);width:min(430px,100%);z-index:21;padding:10px 16px 26px;border-radius:24px 24px 0 0;background:var(--kaca);border:1px solid var(--garis);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.sheet{position:fixed;left:50%;bottom:0;transform:translate(-50%,105%);width:min(430px,100%);z-index:27;padding:10px 16px 26px;border-radius:24px 24px 0 0;background:var(--kaca);border:1px solid var(--garis);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);transition:transform .3s cubic-bezier(.2,.8,.2,1)}
 .sheet.buka{transform:translate(-50%,0)}
 .pemegang{width:40px;height:4px;border-radius:4px;background:var(--garis);margin:0 auto 12px}
 .pilihan{display:flex;align-items:center;gap:10px;width:100%;padding:12px 6px;border-bottom:1px solid var(--garis);text-align:left}
@@ -114,7 +114,7 @@ h1{font-size:1.55rem;font-weight:600;margin:4px 0 2px;letter-spacing:-.01em}
 .nav button{display:grid;justify-items:center;gap:2px;font-size:.66rem;color:var(--pudar);padding:4px 8px;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
 .nav button.aktif{color:var(--teks);transform:translateY(-12px)}
 .nav button.aktif svg{width:44px;height:44px;padding:11px;border-radius:50%;background:var(--teks);stroke:var(--bg);box-shadow:0 0 18px 2px rgba(95,211,192,.5)}
-.nota-pra{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:40;font-size:.7rem;padding:3px 10px;border-radius:99px;background:var(--kad);border:1px solid var(--garis);color:var(--pudar)}
+.nota-pra{pointer-events:none;opacity:.6;position:fixed;top:2px;left:50%;transform:translateX(-50%);z-index:40;font-size:.7rem;padding:3px 10px;border-radius:99px;background:var(--kad);border:1px solid var(--garis);color:var(--pudar)}
 .wall{position:fixed;inset:-30px;z-index:0;background:center/cover no-repeat;display:none}
 .wall::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,var(--gelap,.35))}
 body.bergambar .wall{display:block}body.bergambar .latar{display:none}
@@ -161,6 +161,62 @@ body.bergambar .wall{display:block}body.bergambar .latar{display:none}
 .gel.buka .garis-g{opacity:1}
 .gelap-g{position:fixed;inset:0;z-index:24;background:rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .35s}
 .gelap-g.buka{opacity:1;pointer-events:auto}
+.asbabkad{display:block;width:100%;text-align:left;border-color:color-mix(in srgb,var(--aksen) 45%,transparent)}
+.logo-a{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:700;color:var(--bg);background:linear-gradient(135deg,var(--aksen),var(--b1,#8b7cf0))}
+.lencana{font-size:.72rem;padding:3px 9px;border-radius:99px;white-space:nowrap}
+.lencana.hijau{background:rgba(95,211,192,.16);color:var(--aksen)}.lencana.kuning{background:rgba(245,197,66,.16);color:#f5c542}.lencana.merah{background:rgba(240,122,114,.16);color:var(--bahaya)}
+.tahap{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:10px 0 4px}
+.tahap i{height:5px;border-radius:4px;background:var(--garis)}
+.tahap i.siap{background:var(--aksen)}
+.tahap i.kini{background:linear-gradient(90deg,var(--aksen),transparent);animation:denyut 1.4s ease-in-out infinite}
+@keyframes denyut{50%{opacity:.45}}
+.tahap.mini{margin:8px 0 6px}
+.tahap-label{display:grid;grid-template-columns:repeat(5,1fr);font-size:.62rem;color:var(--pudar);text-align:center}
+.minta{margin-top:10px}
+.baris-aksi{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 8px}
+.cip.kuat{background:var(--teks);color:var(--bg);border-color:var(--teks)}
+.tahan{position:relative;overflow:hidden;width:100%;padding:13px;border-radius:99px;border:1px solid var(--aksen);font-weight:600;touch-action:none}
+.tahan .isi{position:absolute;inset:0;width:0;background:color-mix(in srgb,var(--aksen) 45%,transparent)}
+.tahan.tekan .isi{width:100%;transition:width 1.3s linear}
+.tahan .lbl{position:relative}
+.semak-list{display:grid;gap:6px;margin-top:8px;font-size:.85rem}
+.semak-list input{accent-color:var(--aksen);margin-right:6px}
+.titik-w{width:10px;height:10px;border-radius:50%;flex:none}.titik-w.hijau{background:var(--aksen)}.titik-w.ungu{background:var(--ungu)}.titik-w.kelabu{background:var(--pudar)}
+button.baris-t{width:100%;text-align:left}
+.st{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:.8rem;flex:none}.st.ok{background:rgba(95,211,192,.16);color:var(--aksen)}.st.jalan{background:rgba(245,197,66,.16)}.st.gagal{background:rgba(240,122,114,.16);color:var(--bahaya)}
+.tab2 button{font-size:.75rem}
+.tp{animation:masuk .25s ease}
+.spek{display:grid;gap:8px}
+.spek li{margin-left:-14px}
+.borang{display:grid;gap:8px;margin-top:10px}
+.borang input{width:100%;margin-top:4px;padding:10px 12px;border-radius:12px;border:1px solid var(--garis);background:var(--kad);color:var(--teks);font:inherit}
+.minda{position:relative;height:300px;margin-top:12px;border-radius:var(--r);border:1px solid var(--garis);background-image:radial-gradient(var(--garis) 1px,transparent 1px);background-size:20px 20px;overflow:hidden}
+.minda svg{position:absolute;inset:0;width:100%;height:100%}
+.minda-teras{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:70px;height:70px;border-radius:50%;display:grid;place-items:center;font-weight:600;color:#3b2508;background:radial-gradient(circle,#fff3cf,#f5c542 60%,#e8a35c)}
+.subjek{position:absolute;transform:translate(-50%,-50%);padding:8px 11px;border-radius:13px;background:var(--kaca);border:1px solid var(--garis);font-size:.78rem;text-align:center;animation:apung 6s ease-in-out infinite;min-width:84px}
+.subjek small{display:block;color:var(--pudar);font-size:.66rem}
+.subjek .bil{position:absolute;top:-7px;right:-7px;min-width:18px;height:18px;border-radius:9px;background:var(--aksen);color:var(--bg);font-size:.65rem;font-weight:700;display:grid;place-items:center;padding:0 4px}
+.satelit-a{position:absolute;transform:translate(-50%,-50%) scale(.2);opacity:0;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:.6rem;background:rgba(245,197,66,.2);border:1px solid #f5c542;transition:all .7s cubic-bezier(.2,.9,.25,1.3)}
+.satelit-a.muncul{transform:translate(-50%,-50%) scale(1);opacity:1}
+.lampiran{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;background:var(--kad);border:1px solid var(--garis);font-size:.82rem;margin-bottom:6px}
+.bulan-s{position:absolute;width:9px;height:9px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 8px currentColor;pointer-events:none}
+.minda{touch-action:none;cursor:grab}
+.subjek{touch-action:none;cursor:grab}
+.pintas-baris{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--garis)}
+.pintas-baris:last-child{border-bottom:0}
+.pintas-baris .ik{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--kad)}
+.pintas-baris .ik svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7}
+.pintas-baris .alat{margin-left:auto;display:flex;gap:4px}
+.pintas-baris .alat button{width:32px;height:32px;border-radius:10px;background:var(--kad)}
+.grup-pintas{margin-bottom:10px}
+.grup-pintas .kecil{margin:8px 0 6px}
+.cip-pintas{display:inline-flex;margin:0 6px 6px 0}
+#bjKerja .minda{height:min(62vh,540px)}
+.seg{position:sticky;top:0;z-index:4;display:flex;margin:12px auto 10px;width:220px;padding:4px;border-radius:99px;background:var(--kaca);border:1px solid var(--garis);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.seg button{flex:1;position:relative;z-index:1;padding:8px 0;font-size:.86rem;color:var(--pudar);border-radius:99px}
+.seg button.pilih{color:var(--bg);font-weight:600}
+.seg-penanda{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:99px;background:var(--teks);transition:transform .35s cubic-bezier(.2,.9,.25,1.2)}
+.seg.kerja .seg-penanda{transform:translateX(100%)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -216,22 +272,109 @@ body.bergambar .wall{display:block}body.bergambar .latar{display:none}
 
   <!-- PROJECT -->
   <section class="skrin" id="project" aria-label="Project">
-    <div class="atas"><button class="ikon" aria-label="Senarai project"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button><h1 style="flex:1;margin:0">Project</h1><button class="cip">+ Baru</button></div>
-    <div class="kad jalur"><span class="titik"></span><div style="flex:1"><strong>1 cadangan menunggu kelulusan</strong><div class="kecil">Milogamingstore: tambah butang WhatsApp</div></div><span class="cip">Semak</span></div>
-    <div class="medan" aria-label="Medan graviti">
-      <svg aria-hidden="true"><path d="M50% 50%" /><g stroke-width="1.4" fill="none">
-        <path d="M200 150 C 150 150, 120 70, 90 70" stroke="#5fd3c0"/><path d="M200 150 C 250 150, 280 60, 300 60" stroke="#8b7cf0"/>
-        <path d="M200 150 C 150 150, 110 240, 80 240" stroke="#8b7cf0"/><path d="M200 150 C 250 150, 290 235, 310 235" stroke="#5fd3c0"/></g></svg>
-      <div class="teras">Asbab</div>
-      <div class="nod" style="left:24%;top:23%">AI ROOM</div>
-      <div class="nod" style="left:76%;top:20%">ByBanana</div>
-      <div class="nod" style="left:22%;top:80%">Project EVA</div>
-      <div class="nod" style="left:77%;top:78%;border-color:rgba(240,122,114,.6)">Milogamingstore</div>
+    <div id="projSenarai">
+      <div class="atas"><h1 style="flex:1;margin:0">Project</h1><button class="cip" onclick="projBaru()">+ Project</button><button class="cip kuat" onclick="mintaBaru()">+ Permintaan</button></div>
+      <button class="kad asbabkad" onclick="bukaProj('asbab')">
+        <div style="display:flex;align-items:center;gap:10px"><span class="logo-a">A</span><div style="flex:1;text-align:left"><strong>Asbab sendiri</strong><div class="kecil">Versi 0.1.19 · repo asbab</div></div><span class="lencana kuning">1 ujian</span></div>
+        <div class="tahap mini" aria-hidden="true"><i class="siap"></i><i class="siap"></i><i class="siap"></i><i class="kini"></i><i></i></div>
+        <div class="kecil" style="text-align:left">Butang kongsi dalam Catatan: APK ujian sedia dicuba</div>
+      </button>
+      <div class="kumpulan">Project lain</div>
+      <div class="senarai-t">
+        <button class="baris-t" onclick="bukaBelajar()"><span class="titik-w" style="background:#f5c542"></span>Diploma IT Semester 1<span class="kanan">Belajar · 5 subjek ›</span></button>
+        <button class="baris-t" onclick="bukaProj('milo')"><span class="titik-w hijau"></span>Milogamingstore<span class="kanan">Website ok ›</span></button>
+        <button class="baris-t" onclick="bukaProj('milo')"><span class="titik-w ungu"></span>AI ROOM<span class="kanan">Kod ›</span></button>
+        <button class="baris-t" onclick="bukaProj('milo')"><span class="titik-w kelabu"></span>Project EVA<span class="kanan">Biasa ›</span></button>
+        <button class="baris-t" onclick="bukaProj('milo')"><span class="titik-w kelabu"></span>Akademi Asbab<span class="kanan">Biasa ›</span></button>
+      </div>
+      <div class="kecil" style="text-align:center;margin-top:10px">Medan Graviti kekal sebagai paparan pilihan</div>
     </div>
-    <div class="grid2"><div class="kad"><div class="kecil">Website dipantau</div><div class="nilai">2 ok</div></div><div class="kad"><div class="kecil">Commit minggu ni</div><div class="nilai">4</div></div></div>
-    <div class="kad aktiviti" style="margin-top:8px"><div class="kecil">Aktiviti terkini</div>
-      <div class="baris"><span class="kecil">10:12</span>AI ROOM: baiki pautan footer</div>
-      <div class="baris"><span class="kecil">Semalam</span>Milogamingstore: website pulih</div>
+
+
+    <div id="projBelajar" style="display:none">
+      <button class="kembali" onclick="tutupBelajar()">‹ Project</button>
+      <div id="bjUtama">
+        <div style="display:flex;align-items:center;gap:10px"><span class="logo-a" style="background:linear-gradient(135deg,#f5c542,#e8836b)">D</span><div><h1 style="margin:0">Diploma IT Semester 1</h1><div class="kecil">Belajar · tekan subjek untuk masuk</div></div></div>
+        <div class="seg" role="tablist" aria-label="Sembang atau Kerja"><span class="seg-penanda" id="segPen"></span>
+          <button class="pilih" id="segSembang" onclick="tukarSeg('sembang')">Sembang</button><button id="segKerja" onclick="tukarSeg('kerja')">Kerja</button></div>
+        <div id="bjKerja" style="display:none">
+        <div class="minda" id="minda" aria-label="Peta minda subjek">
+          <svg id="mindaGaris" aria-hidden="true"></svg>
+          <div class="minda-teras">Sem 1</div>
+        </div>
+        <div class="kecil" style="text-align:center;margin-top:8px">Seret subjek atau ruang kosong. Tekan subjek untuk masuk.</div>
+        </div>
+        <div id="bjSembang">
+        <div class="mesej" id="bjChat">
+          <div class="asbab">Hantar assignment, nota atau rakaman di sini. Aku susun ke subjek yang betul.</div>
+        </div>
+        </div>
+        <div style="height:80px"></div>
+      </div>
+      <div id="bjSubjek" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px"><span class="logo-a" id="bjIkon">E</span><div><h1 style="margin:0" id="bjNama">English Skills</h1><div class="kecil">Subjek · Diploma IT Semester 1</div></div></div>
+        <div class="tab tab2"><span class="penanda" id="penanda3"></span><button class="pilih">Assignment</button><button>Kuliah</button><button>Nota</button><button>Kuiz</button><button>Chat</button></div>
+        <div id="bjSenarai"></div>
+      </div>
+    </div>
+    <div id="projButiran" style="display:none">
+      <button class="kembali" onclick="tutupProj()">‹ Project</button>
+      <div style="display:flex;align-items:center;gap:10px"><span class="logo-a">A</span><div><h1 style="margin:0">Asbab sendiri</h1><div class="kecil">Kod · repo asbab · ejen lalai: Gemini</div></div></div>
+      <div class="tab tab2" role="tablist" id="tabProj"><span class="penanda" id="penanda2"></span>
+        <button class="pilih" onclick="tabProj(this,'tp-minta')">Permintaan</button><button onclick="tabProj(this,'tp-bina')">Binaan</button><button onclick="tabProj(this,'tp-chat')">Chat</button><button onclick="tabProj(this,'tp-akt')">Aktiviti</button><button onclick="tabProj(this,'tp-tet')">Tetapan</button></div>
+
+      <div class="tp" id="tp-minta">
+        <div class="kad minta">
+          <div style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Butang kongsi dalam Catatan</strong><span class="lencana hijau">Risiko rendah</span></div>
+          <div class="kecil">Tukang: AI dalam Asbab · dimulakan 10:42</div>
+          <div class="tahap" aria-label="Tahap: APK ujian sedia"><i class="siap"></i><i class="siap"></i><i class="siap"></i><i class="kini"></i><i></i></div>
+          <div class="tahap-label"><span>Spesifikasi</span><span>Bekerja</span><span>Dibina</span><span>Ujian</span><span>Dipasang</span></div>
+          <div class="baris-aksi"><button class="cip kuat">Cuba versi ujian</button><button class="cip">Minta pembetulan</button></div>
+          <button class="tahan" id="tahanLulus"><span class="isi"></span><span class="lbl">Tekan dan tahan untuk lulus</span></button>
+        </div>
+        <div class="kad minta">
+          <div style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Ringkasan mingguan lebih terperinci</strong><span class="lencana kuning">Sederhana</span></div>
+          <div class="kecil">Tukang: Gemini (GitHub) · sedang bekerja, 6 minit</div>
+          <div class="tahap"><i class="siap"></i><i class="kini"></i><i></i><i></i><i></i></div>
+          <div class="tahap-label"><span>Spesifikasi</span><span>Bekerja</span><span>Dibina</span><span>Ujian</span><span>Dipasang</span></div>
+        </div>
+        <div class="kad minta">
+          <div style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Tukar cara simpan key API</strong><span class="lencana merah">Risiko tinggi</span></div>
+          <div class="kecil">Menunggu semakan kedua sebelum dimulakan</div>
+          <div class="semak-list"><label><input type="checkbox"> APK ujian dah dicuba</label><label><input type="checkbox"> Semakan kedua dah dibuat</label><label><input type="checkbox"> Backup terkini dah diambil</label></div>
+        </div>
+      </div>
+
+      <div class="tp" id="tp-bina" style="display:none">
+        <div class="senarai-t">
+          <div class="baris-t"><span class="st ok">✓</span><div><strong>0.1.20 ujian</strong><div class="kecil">Butang kongsi · 3 minit lepas</div></div><span class="kanan">Muat turun</span></div>
+          <div class="baris-t"><span class="st jalan">⏳</span><div><strong>Binaan sedang berjalan</strong><div class="kecil">Ringkasan mingguan · Gemini</div></div></div>
+          <div class="baris-t"><span class="st gagal">✗</span><div><strong>0.1.18 ujian</strong><div class="kecil">Gagal: ralat rangkaian, dibina semula</div></div><span class="kanan">Log</span></div>
+          <div class="baris-t"><span class="st ok">✓</span><div><strong>0.1.19 rasmi</strong><div class="kecil">Dipasang semalam</div></div><span class="kanan">Patah balik</span></div>
+        </div>
+      </div>
+
+      <div class="tp" id="tp-chat" style="display:none">
+        <div class="asbab">Nak ubah apa pada Asbab hari ni? Ceritakan dalam ayat biasa, aku susun jadi spesifikasi.</div>
+        <div class="saya" style="margin-top:10px;margin-left:auto;width:fit-content">Tambah butang kongsi dalam Catatan</div>
+        <div class="asbab" style="margin-top:10px">Baik, aku dah susun spesifikasi dengan risiko rendah.
+          <div><button class="aksi" onclick="tabProj(document.querySelector('#tabProj button'),'tp-minta')">Lihat permintaan</button></div></div>
+        <div class="cadangan" style="margin-top:12px"><button>Baiki bug</button><button>Tambah butang</button><button>Tukar teks</button><button>Lapor crash</button></div>
+        <div style="height:70px"></div>
+      </div>
+
+      <div class="tp" id="tp-akt" style="display:none">
+        <div class="kad aktiviti"><div class="baris"><span class="kecil">10:45</span>APK ujian 0.1.20 siap dibina</div><div class="baris"><span class="kecil">10:42</span>Spesifikasi diluluskan, AI Asbab mula bekerja</div><div class="baris"><span class="kecil">Semalam</span>0.1.19 dipasang</div></div>
+      </div>
+
+      <div class="tp" id="tp-tet" style="display:none">
+        <div class="senarai-t">
+          <div class="baris-t">Repo<span class="kanan">bybananasupport-max/asbab</span></div>
+          <div class="baris-t">Ejen lalai<span class="kanan">Auto ›</span></div>
+          <div class="baris-t">Peraturan risiko<span class="kanan">Lihat ›</span></div>
+          <div class="baris-t">Mod selamat<span class="suis on" onclick="this.classList.toggle('on')"></span></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -258,6 +401,10 @@ body.bergambar .wall{display:block}body.bergambar .latar{display:none}
       <div class="baris-t"><svg viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>Sambungan dan API<span class="kanan">OpenAI, Gemini ›</span></div>
       <div class="baris-t"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Minta izin dulu<span class="suis" onclick="this.classList.toggle('on')"></span></div>
     </div>
+    <div class="kumpulan">Butang bulan</div>
+    <div class="senarai-t">
+      <button class="baris-t" onclick="pergi('pintasan')"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg>Pintasan butang bulan<span class="kanan" id="ringkasPintas">10 pintasan ›</span></button>
+    </div>
     <div class="kumpulan">Peringatan</div>
     <div class="senarai-t">
       <div class="baris-t"><svg viewBox="0 0 24 24"><path d="M6 18V9a6 6 0 0 1 12 0v9M4 18h16"/></svg>Mod Bilal<span class="kanan">20 minit ›</span></div>
@@ -266,6 +413,18 @@ body.bergambar .wall{display:block}body.bergambar .latar{display:none}
     </div>
   </section>
 
+
+  <!-- PINTASAN -->
+  <section class="skrin" id="pintasan" aria-label="Pintasan butang bulan">
+    <button class="kembali" onclick="pergi('tetapan')">‹ Tetapan</button>
+    <h1>Pintasan butang bulan</h1>
+    <div class="kecil">Susun apa yang muncul bila butang bulan dibuka. Maksimum 10.</div>
+    <div class="kumpulan">Dalam jalur sekarang</div>
+    <div class="senarai-t" id="pintasKini"></div>
+    <div class="kumpulan">Tambah pintasan</div>
+    <div id="pintasPilih"></div>
+    <div style="height:30px"></div>
+  </section>
   <!-- RUPA -->
   <section class="skrin" id="rupa" aria-label="Wallpaper dan rupa">
     <button class="kembali" onclick="pergi('tetapan')">‹ Tetapan</button>
@@ -326,6 +485,36 @@ body.bergambar .wall{display:block}body.bergambar .latar{display:none}
   <div class="senarai-g" id="senaraiG"></div>
   <button class="bulan" id="bulanG" aria-label="Buka menu Asbab"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="13" fill="rgba(255,255,255,.12)"/><path d="M20 7a13 13 0 1 0 0 26a10 13 0 1 1 0-26z" fill="#f3ead2"/></svg></button>
 </div>
+<div class="sheet" id="sheetMinta" role="dialog" aria-label="Permintaan baharu">
+  <div class="pemegang"></div>
+  <div id="mintaLangkah1">
+    <strong>Permintaan baharu untuk Asbab</strong>
+    <div class="kecil" style="margin:4px 0 10px">Tulis dalam ayat biasa</div>
+    <div class="taip aktif" style="position:static;transform:none;width:100%;margin-bottom:10px"><input id="mintaTeks" value="Tambah butang kongsi dalam Catatan" aria-label="Permintaan"><button class="hantar" onclick="spek()" aria-label="Susun">➤</button></div>
+  </div>
+  <div id="mintaLangkah2" style="display:none">
+    <div style="display:flex;gap:8px;align-items:center"><strong style="flex:1">Spesifikasi dari Asbab</strong><span class="lencana hijau">Risiko rendah</span></div>
+    <ul class="spek kecil" style="color:var(--teks)"><li>Butang ikon kongsi pada setiap kad Catatan</li><li>Buka menu kongsi Android dengan tajuk dan isi catatan</li><li>Tiada perubahan pada data atau backup</li></ul>
+    <div class="kecil">Senarai semak: butang kelihatan, kongsi ke WhatsApp berjaya, tiada crash</div>
+    <div class="kumpulan">Tukang</div>
+    <div class="seksyen-pilih"><button class="pilih">Auto: AI Asbab</button><button>Gemini</button></div>
+    <div class="baris-aksi"><button class="cip kuat" onclick="hantarMinta()">Teruskan</button><button class="cip" onclick="sheetM(false)">Batal</button></div>
+  </div>
+</div>
+<div class="sheet" id="sheetProj" role="dialog" aria-label="Project baru">
+  <div class="pemegang"></div>
+  <strong>Project baru</strong>
+  <div class="borang">
+    <label class="kecil">Nama<input value="Website kedai makan"></label>
+    <div class="kecil" style="margin-top:6px">Jenis</div>
+    <div class="seksyen-pilih" id="jenisProj"><button class="pilih">Kod</button><button>Website</button><button>Biasa</button></div>
+    <label class="kecil">Repo GitHub (untuk Kod)<input placeholder="username/nama-repo"></label>
+    <label class="kecil">Alamat website untuk dipantau (pilihan)<input placeholder="https://"></label>
+    <div class="kecil" style="margin-top:6px">Ejen lalai</div>
+    <div class="seksyen-pilih"><button class="pilih">Auto</button><button>AI Asbab</button><button>Gemini</button></div>
+  </div>
+  <div class="baris-aksi"><button class="cip kuat" onclick="sheetP(false)">Cipta project</button><button class="cip" onclick="sheetP(false)">Batal</button></div>
+</div>
 <div class="toast" id="toast"><span>Catatan dipadam</span><button onclick="batal()">Batal</button></div>
 
 <script>
@@ -364,7 +553,7 @@ function tab(btn,k){const bs=[...btn.parentNode.querySelectorAll('button')];bs.f
 setTimeout(()=>{const b=document.querySelector('.tab button');const p=document.getElementById('penanda');p.style.width=b.offsetWidth+'px'},50);
 
 const mula=Date.now();
-const f=s=>{s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
+const f=s=>{s=Math.max(0,s);if(s>=86400)return Math.floor(s/86400)+' hari '+Math.floor(s%86400/3600)+' jam';const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
 setInterval(()=>{const e=Math.floor((Date.now()-mula)/1000);
   document.querySelectorAll('.kira').forEach(k=>k.textContent=f(+k.dataset.s-e));
   const left=2520-e;document.getElementById('asarTeks').textContent='lagi '+Math.ceil(Math.max(0,left)/60)+' minit';
@@ -420,6 +609,7 @@ document.getElementById('failWall').onchange=e=>{const f=e.target.files[0];if(!f
 function buangWall(){delete R.wall[sek];simpan();terap();lukisRupa()}
 const asalPergi=pergi;
 pergi=function(id){asalPergi(id);if(['chat','hari','project','catatan'].includes(id))semasa=id;if(id==='rupa')lukisRupa();terap();
+
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('aktif',b.dataset.s===(id==='rupa'?'tetapan':id)))};
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>pergi(b.dataset.s));
 terap();
@@ -430,8 +620,8 @@ const gel=document.getElementById('gel'),sg=document.getElementById('senaraiG'),
 ITEM.forEach(([k,n])=>{if(k==='-'){const d=document.createElement('span');d.className='garis-g';sg.append(d);return}
   const b=document.createElement('button');b.dataset.k=k;b.setAttribute('aria-label',n);b.innerHTML='<svg viewBox="0 0 24 24">'+IK[k]+'</svg>';
   b.onclick=e=>{e.stopPropagation();tutupG();if(['chat','hari','project','catatan','tetapan'].includes(k))setTimeout(()=>pergi(k),250)};sg.append(b)});
-const PENUH=60+ITEM.length*50-6;let atasAsal=null,keAtas=false;
-function bukaG(){const r=gel.getBoundingClientRect();atasAsal=r.top;keAtas=r.top>innerHeight/2;
+let PENUH=60+ITEM.length*50-6;let atasAsal=null,keAtas=false;
+function bukaG(){PENUH=60+sg.children.length*50-6;const r=gel.getBoundingClientRect();atasAsal=r.top;keAtas=r.top>innerHeight/2;
   const kini=document.querySelector('.nav button.aktif')?.dataset.s;sg.querySelectorAll('button').forEach(b=>b.classList.toggle('kini',b.dataset.k===kini));
   const n=sg.children.length;[...sg.children].forEach((c,i)=>c.style.transitionDelay=(keAtas?n-i:i)*28+'ms');
   sg.style.top=keAtas?'8px':'62px';document.getElementById('bulanG').style.top=keAtas?(PENUH-60)+'px':'0';
@@ -449,6 +639,138 @@ document.getElementById('bulanG').addEventListener('pointerup',()=>{seret=false;
   const r=gel.getBoundingClientRect();const kiri=r.left+30<innerWidth/2;gel.style.left=kiri?'12px':(innerWidth-72)+'px';
   gel.style.top=Math.max(60,Math.min(innerHeight-150,r.top))+'px'});
 gg.onclick=tutupG;
+
+function bukaProj(){document.getElementById('projSenarai').style.display='none';document.getElementById('projButiran').style.display='block';
+  setTimeout(()=>{const b=document.querySelector('#tabProj button');const p=document.getElementById('penanda2');p.style.width=b.offsetWidth+'px';p.style.transform='translateX(0)'},30)}
+function tutupProj(){document.getElementById('projSenarai').style.display='block';document.getElementById('projButiran').style.display='none'}
+function tabProj(btn,id){btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('pilih',b===btn));
+  const p=document.getElementById('penanda2');p.style.width=btn.offsetWidth+'px';p.style.transform=`translateX(${btn.offsetLeft-4}px)`;
+  document.querySelectorAll('.tp').forEach(t=>t.style.display=t.id===id?'block':'none')}
+function sheetM(on){document.getElementById('sheetMinta').classList.toggle('buka',on);document.getElementById('tirai').classList.toggle('buka',on)}
+function mintaBaru(){document.getElementById('mintaLangkah1').style.display='block';document.getElementById('mintaLangkah2').style.display='none';sheetM(true)}
+function spek(){document.getElementById('mintaLangkah1').style.display='none';document.getElementById('mintaLangkah2').style.display='block'}
+function hantarMinta(){sheetM(false);bukaProj();const t=document.getElementById('toast');t.querySelector('span').textContent='Permintaan dihantar kepada AI Asbab';t.classList.add('tunjuk');setTimeout(()=>{t.classList.remove('tunjuk');t.querySelector('span').textContent='Catatan dipadam'},2500)}
+document.getElementById('tirai').addEventListener('click',()=>sheetM(false));
+(()=>{const b=document.getElementById('tahanLulus');let h;
+ b.addEventListener('pointerdown',e=>{e.preventDefault();b.classList.add('tekan');h=setTimeout(()=>{b.querySelector('.lbl').textContent='Diluluskan, versi rasmi sedang dibina';navigator.vibrate?.([20,40,60])},1300)});
+ ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>{clearTimeout(h);if(!b.querySelector('.lbl').textContent.startsWith('Dilulus'))b.classList.remove('tekan')}))})();
+
+function sheetP(on){document.getElementById('sheetProj').classList.toggle('buka',on);document.getElementById('tirai').classList.toggle('buka',on)}
+function projBaru(){sheetP(true)}
+document.getElementById('tirai').addEventListener('click',()=>sheetP(false));
+document.querySelectorAll('#sheetProj .seksyen-pilih').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>g.querySelectorAll('button').forEach(x=>x.classList.toggle('pilih',x===b))));
+const asalTabProj=tabProj;
+tabProj=function(btn,id){asalTabProj(btn,id);const t=document.getElementById('taip');t.classList.toggle('aktif',id==='tp-chat');t.querySelector('input').placeholder=id==='tp-chat'?'Minta perubahan pada Asbab…':'Cakap dengan Asbab…'};
+const asalTutup=tutupProj;tutupProj=function(){asalTutup();document.getElementById('taip').classList.remove('aktif')};
+
+const SUBJEK=[{n:'English Skills',k:'E',c:'#e8836b',a:1},{n:'Pengaturcaraan',k:'P',c:'#5fd3c0',a:2},{n:'Matematik',k:'M',c:'#8b7cf0',a:0},{n:'Sistem Komputer',k:'S',c:'#4cc2ff',a:1},{n:'Pengajian Islam',k:'I',c:'#8fd16a',a:0}];
+const TUGAS={'English Skills':[{t:'Video role-play MPP Night Festival',d:'Hantar Jumaat',s:259200}],'Pengaturcaraan':[{t:'Lab 3: gelung for',d:'Hantar esok',s:86400},{t:'Projek mini kalkulator',d:'Hantar 10 Dis',s:950400}],'Sistem Komputer':[{t:'Laporan komponen PC',d:'Hantar Isnin',s:432000}]};
+let MF=null;
+function lukisMinda(){const m=document.getElementById('minda');m.querySelectorAll('.subjek,.bulan-s').forEach(x=>x.remove());
+  const W=m.clientWidth,H=m.clientHeight,teras=m.querySelector('.minda-teras');
+  const N=SUBJEK.map((sj,i)=>{const a=i/SUBJEK.length*Math.PI*2-Math.PI/2,ax=W/2+Math.cos(a)*W*.34,ay=H/2+Math.sin(a)*H*.36;
+    const el=document.createElement('button');el.className='subjek';el.style.animation='none';
+    el.innerHTML=`<strong style="color:${sj.c}"></strong><small></small>${sj.a?'<span class="bil">'+sj.a+'</span>':''}`;
+    el.querySelector('strong').textContent=sj.n;el.querySelector('small').textContent=sj.a?sj.a+' assignment':'tiada tugasan';m.append(el);
+    const bulan=[...Array(sj.a)].map((_,k)=>{const d=document.createElement('span');d.className='bulan-s';d.style.background=sj.c;m.append(d);return{el:d,ph:k/sj.a*Math.PI*2}});
+    const n={sj,el,ax,ay,x:W/2,y:H/2,vx:0,vy:0,hold:false,seed:Math.random()*9,bulan};
+    let gerak=0,lx,ly,lt;
+    el.addEventListener('pointerdown',e=>{n.hold=true;gerak=0;lx=e.clientX;ly=e.clientY;lt=performance.now();el.setPointerCapture(e.pointerId);e.stopPropagation()});
+    el.addEventListener('pointermove',e=>{if(!n.hold)return;const dx=e.clientX-lx,dy=e.clientY-ly,t=performance.now();gerak+=Math.abs(dx)+Math.abs(dy);
+      n.x+=dx;n.y+=dy;n.vx=dx/Math.max(1,t-lt)*16;n.vy=dy/Math.max(1,t-lt)*16;lx=e.clientX;ly=e.clientY;lt=t});
+    el.addEventListener('pointerup',()=>{n.hold=false;if(gerak<6)bukaSubjek(sj)});
+    return n});
+  const P={ox:0,oy:0,vx:0,vy:0,hold:false};let plx,ply;
+  m.onpointerdown=e=>{if(e.target.closest('.subjek'))return;P.hold=true;plx=e.clientX;ply=e.clientY;m.setPointerCapture(e.pointerId)};
+  m.onpointermove=e=>{if(!P.hold)return;const dx=e.clientX-plx,dy=e.clientY-ply;P.ox+=dx;P.oy+=dy;P.vx=dx;P.vy=dy;plx=e.clientX;ply=e.clientY};
+  m.onpointerup=()=>{P.hold=false};
+  MF={N,P};const t0=performance.now();
+  (function langkah(ts){if(!m.isConnected||document.getElementById('bjUtama').style.display==='none'){MF=null;return}
+    const t=(ts-t0)/1000;
+    if(!P.hold){P.ox+=P.vx;P.oy+=P.vy;P.vx*=.9;P.vy*=.9;P.ox*=.94;P.oy*=.94}
+    const cx=W/2+P.ox,cy=H/2+P.oy;teras.style.left=cx+'px';teras.style.top=cy+'px';
+    let g='';
+    for(const n of N){if(!n.hold){
+        n.vx+=(n.ax+P.ox-n.x)*.035;n.vy+=(n.ay+P.oy-n.y)*.035;
+        for(const o of N){if(o===n)continue;const dx=n.x-o.x,dy=n.y-o.y,d=Math.hypot(dx,dy)||1;if(d<95){n.vx+=dx/d*(95-d)*.04;n.vy+=dy/d*(95-d)*.04}}
+        const dx=n.x-cx,dy=n.y-cy,d=Math.hypot(dx,dy)||1;if(d<80){n.vx+=dx/d*(80-d)*.06;n.vy+=dy/d*(80-d)*.06}
+        n.vx+=Math.sin(t*.8+n.seed)*.05;n.vy+=Math.cos(t*.7+n.seed)*.05;
+        n.vx*=.86;n.vy*=.86;n.x+=n.vx;n.y+=n.vy}
+      n.el.style.left=n.x+'px';n.el.style.top=n.y+'px';
+      const tg=Math.min(1,Math.hypot(n.x-cx,n.y-cy)/160);
+      g+=`<path d="M${cx} ${cy} C ${(cx+n.x)/2} ${cy}, ${(cx+n.x)/2} ${n.y}, ${n.x} ${n.y}" stroke="${n.sj.c}" stroke-width="${1+tg}" stroke-opacity="${.5+tg*.4}" fill="none"/>`;
+      n.bulan.forEach((b,k)=>{const a=b.ph+t*1.2;b.el.style.left=(n.x+Math.cos(a)*52)+'px';b.el.style.top=(n.y+Math.sin(a)*30)+'px'})}
+    document.getElementById('mindaGaris').innerHTML=g;requestAnimationFrame(langkah)})(t0);
+}
+function bukaBelajar(){document.getElementById('projSenarai').style.display='none';document.getElementById('projBelajar').style.display='block';
+  document.getElementById('bjUtama').style.display='block';document.getElementById('bjSubjek').style.display='none';setTimeout(lukisMinda,30);
+  const t=document.getElementById('taip');t.classList.add('aktif');t.querySelector('input').placeholder='Hantar assignment atau tanya…';
+  if(!document.getElementById('bjDemo')){const c=document.getElementById('bjChat');
+    c.insertAdjacentHTML('beforeend',`<div id="bjDemo"><div class="saya" style="margin-left:auto;width:fit-content;max-width:85%"><div class="lampiran">📎 Assignment_Essay_Cuti.pdf</div>Weh tolong buat assignment ni</div></div>`);
+    setTimeout(()=>{c.insertAdjacentHTML('beforeend',`<div class="asbab" id="bjTanya">Aku dah baca. Ia esei 500 patah perkataan tentang pengalaman cuti, tarikh hantar 12 Disember, dan rubrik menilai tatabahasa dan struktur. Ini untuk <b>English Skills</b> ke?
+      <div class="baris-aksi"><button class="cip kuat" onclick="sahAssignment()">Ya, English Skills</button><button class="cip">Subjek lain</button></div></div>`)},700)}}
+function sahAssignment(){const q=document.getElementById('bjTanya');q.querySelector('.baris-aksi').remove();
+  q.insertAdjacentHTML('afterend',`<div class="asbab">Dah dimasukkan ke English Skills, dengan peringatan 3 hari sebelum tarikh hantar. Dalam Mod Belajar, aku bantu kau rangka, semak dengan rubrik dan betulkan bahasa; esei tu kau yang tulis.
+    <div><button class="aksi" onclick="bukaSubjek(SUBJEK[0])">Buka English Skills</button></div><div class="meta">otak kedua: Gemini · 1 assignment ditambah</div></div>`);
+  TUGAS['English Skills'].push({t:'Esei pengalaman cuti',d:'Hantar 12 Dis',s:1209600});SUBJEK[0].a++;
+  const m=document.getElementById('minda');const sj=SUBJEK[0];const sat=document.createElement('div');sat.className='satelit-a';sat.textContent='Esei';
+  sat.style.left=(m.clientWidth/2)+'px';sat.style.top=(m.clientHeight/2)+'px';m.append(sat);
+  m.scrollIntoView({behavior:'smooth',block:'center'});
+  const nn=MF&&MF.N[0];setTimeout(()=>{sat.classList.add('muncul');sat.style.left=((nn?nn.x:120)+48)+'px';sat.style.top=((nn?nn.y:80)+30)+'px'},250);
+  setTimeout(()=>{sat.remove();lukisMinda()},1200);navigator.vibrate?.(20)}
+function bukaSubjek(sj){document.getElementById('bjUtama').style.display='none';document.getElementById('bjSubjek').style.display='block';
+  document.getElementById('bjNama').textContent=sj.n;const ik=document.getElementById('bjIkon');ik.textContent=sj.k;ik.style.background=sj.c;
+  const p=document.getElementById('penanda3');const b=document.querySelector('#bjSubjek .tab button');setTimeout(()=>{p.style.width=b.offsetWidth+'px'},20);
+  const L=document.getElementById('bjSenarai');L.innerHTML='';(TUGAS[sj.n]||[]).forEach(t=>{const d=document.createElement('div');d.className='kad item';d.style.marginTop='8px';
+    d.innerHTML='<strong></strong><div class="kecil"></div><span class="kira"></span>';d.querySelector('strong').textContent=t.t;d.querySelector('.kecil').textContent=t.d;d.querySelector('.kira').dataset.s=t.s;L.append(d)});
+  if(!(TUGAS[sj.n]||[]).length)L.innerHTML='<div class="kad" style="margin-top:8px">Tiada assignment lagi. Hantar melalui chat project, Asbab susun ke sini.</div>';
+  const t=document.getElementById('taip');t.querySelector('input').placeholder='Tanya tentang '+sj.n+'…'}
+function tutupBelajar(){if(document.getElementById('bjSubjek').style.display==='block'){bukaBelajar();return}
+  document.getElementById('projBelajar').style.display='none';document.getElementById('projSenarai').style.display='block';document.getElementById('taip').classList.remove('aktif')}
+
+IK.belajar='<path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11v5c3 2 7 2 10 0v-5"/>';IK.milo='<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4a12 12 0 0 1 0 16"/>';
+IK.belanja='<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/>';IK.solat='<path d="M12 3v3M6 20V10l6-4 6 4v10z"/>';
+IK.wa='<path d="M4 20l1.5-4A8 8 0 1 1 9 19z"/>';IK.rakam='<circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9"/>';IK.cmd='<path d="M5 8l4 4-4 4M11 16h8"/>';
+const KATALOG=[
+ ['Halaman',[['chat','Chat'],['hari','Hari Ini'],['project','Project'],['catatan','Catatan'],['tetapan','Tetapan']]],
+ ['Project dan subjek',[['belajar','Diploma IT Sem 1'],['milo','Milogamingstore']]],
+ ['Tindakan telefon',[['kamera','Kamera'],['lampu','Lampu suluh'],['kunci','Kunci skrin'],['rakam','Rakam suara']]],
+ ['Arahan pantas',[['solat','Waktu solat'],['belanja','Rekod belanja'],['cmd','Jadual esok']]],
+ ['App lain',[['wa','Buka WhatsApp']]]];
+const NAMA=Object.fromEntries(KATALOG.flatMap(g=>g[1]));
+let PINTAS=JSON.parse(localStorage.getItem('asbab-pintas')||'null')||['suara','chat','hari','project','catatan','kamera','lampu','kunci','tetapan'];
+NAMA.suara='Arahan suara';
+function simpanPintas(){localStorage.setItem('asbab-pintas',JSON.stringify(PINTAS));binaJalur();lukisPintas()}
+function binaJalur(){sg.innerHTML='';PINTAS.forEach(k=>{const b=document.createElement('button');b.dataset.k=k;b.setAttribute('aria-label',NAMA[k]||k);b.innerHTML='<svg viewBox="0 0 24 24">'+(IK[k]||IK.cmd)+'</svg>';
+  b.onclick=e=>{e.stopPropagation();tutupG();if(['chat','hari','project','catatan','tetapan'].includes(k))setTimeout(()=>pergi(k),250);if(k==='belajar')setTimeout(()=>{pergi('project');bukaBelajar()},250)};sg.append(b)});
+  document.getElementById('ringkasPintas').textContent=PINTAS.length+' pintasan ›'}
+function lukisPintas(){const K=document.getElementById('pintasKini');K.innerHTML='';
+  PINTAS.forEach((k,i)=>{const r=document.createElement('div');r.className='pintas-baris';
+    r.innerHTML=`<span class="ik"><svg viewBox="0 0 24 24">${IK[k]||IK.cmd}</svg></span><span></span><span class="alat"><button aria-label="Naik">↑</button><button aria-label="Turun">↓</button><button aria-label="Buang">✕</button></span>`;
+    r.children[1].textContent=NAMA[k]||k;const [up,dn,rm]=r.querySelectorAll('.alat button');
+    up.onclick=()=>{if(i>0){[PINTAS[i-1],PINTAS[i]]=[PINTAS[i],PINTAS[i-1]];simpanPintas()}};
+    dn.onclick=()=>{if(i<PINTAS.length-1){[PINTAS[i+1],PINTAS[i]]=[PINTAS[i],PINTAS[i+1]];simpanPintas()}};
+    rm.onclick=()=>{PINTAS.splice(i,1);simpanPintas()};K.append(r)});
+  const P=document.getElementById('pintasPilih');P.innerHTML='';
+  KATALOG.forEach(([g,items])=>{const d=document.createElement('div');d.className='grup-pintas';d.innerHTML=`<div class="kecil">${g}</div>`;
+    items.filter(([k])=>!PINTAS.includes(k)).forEach(([k,n])=>{const b=document.createElement('button');b.className='cip cip-pintas';b.textContent='+ '+n;
+      b.onclick=()=>{if(PINTAS.length>=10){alert('Maksimum 10 pintasan. Buang satu dulu.');return}PINTAS.push(k);simpanPintas()};d.append(b)});
+    if(d.children.length>1)P.append(d)})}
+const asalPergi2=pergi;pergi=function(id){asalPergi2(id);if(id==='pintasan'){lukisPintas();document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('aktif',b.dataset.s==='tetapan'))}};
+document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>pergi(b.dataset.s));
+binaJalur();
+
+function tukarSeg(m){const seg=document.querySelector('.seg');seg.classList.toggle('kerja',m==='kerja');
+  document.getElementById('segSembang').classList.toggle('pilih',m==='sembang');document.getElementById('segKerja').classList.toggle('pilih',m==='kerja');
+  document.getElementById('bjKerja').style.display=m==='kerja'?'block':'none';document.getElementById('bjSembang').style.display=m==='sembang'?'block':'none';
+  document.getElementById('taip').classList.toggle('aktif',m==='sembang');if(m==='kerja')setTimeout(lukisMinda,20);navigator.vibrate?.(8)}
+const asalBuka=bukaBelajar;bukaBelajar=function(){asalBuka();tukarSeg('sembang')};
+const asalSah=sahAssignment;sahAssignment=function(){
+  const q=document.getElementById('bjTanya');q.querySelector('.baris-aksi').remove();
+  q.insertAdjacentHTML('afterend',`<div class="asbab">Dah dimasukkan ke English Skills, dengan peringatan 3 hari sebelum tarikh hantar. Dalam Mod Belajar, aku bantu kau rangka, semak dengan rubrik dan betulkan bahasa; esei tu kau yang tulis.
+    <div><button class="aksi" onclick="tukarSeg('kerja')">Lihat di Kerja</button></div><div class="meta">otak kedua: Gemini · 1 assignment ditambah</div></div>`);
+  TUGAS['English Skills'].push({t:'Esei pengalaman cuti',d:'Hantar 12 Dis',s:1209600});SUBJEK[0].a++;
+  setTimeout(()=>{tukarSeg('kerja');setTimeout(()=>{const n=MF&&MF.N[0];if(n){n.vx+=0;n.el.animate([{transform:'translate(-50%,-50%) scale(1.25)'},{transform:'translate(-50%,-50%) scale(1)'}],{duration:600,easing:'cubic-bezier(.2,.9,.25,1.3)'})}},350)},900);navigator.vibrate?.(20)};
 </script>
 </body>
 </html>
