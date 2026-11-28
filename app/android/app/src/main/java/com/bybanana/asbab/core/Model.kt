@@ -31,6 +31,18 @@ data class Settings(
     val retentionDays: Int = 3,
     // Phase 4: floating moon button
     val bubble: Boolean = false,
+    // Phase 6.1
+    val masjidOn: Boolean = false,          // Mod Masjid: silent from prayer time for masjidMinutes, except Mod Bilal
+    val masjidMinutes: Int = 20,
+    val weeklyOn: Boolean = true,           // Sunday night summary (no AI)
+    val bilalSound: String = "",            // content:// audio file picked by Amin ("" = phone's notification sound)
+    val bilalVolume: Int = 80,
+    val bilalVibrateOnly: Boolean = false,
+    val azanSound: String = "",             // Amin's own azan file (Asbab ships no recordings)
+    val azanVolume: Int = 80,
+    val azan: Set<String> = emptySet(),     // prayers with azan at the prayer time, e.g. ["fajr", "maghrib"]
+    val budgetDaily: Double = 0.0,          // RM, 0 = no limit
+    val budgetMonthly: Double = 0.0,
 ) {
     fun allowed(toggle: String) = access[toggle] == true
 
@@ -57,6 +69,17 @@ data class Settings(
                 blocklist = o.optJSONArray("blocklist")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } } ?: emptyList(),
                 retentionDays = o.optInt("retentionDays", d.retentionDays).coerceIn(1, 30),
                 bubble = o.optBoolean("bubble", d.bubble),
+                masjidOn = o.optJSONObject("masjid")?.optBoolean("on", false) ?: false,
+                masjidMinutes = (o.optJSONObject("masjid")?.optInt("minit", 20) ?: 20).coerceIn(5, 120),
+                weeklyOn = o.optBoolean("ringkasanMingguan", true),
+                bilalSound = o.optJSONObject("bunyi")?.optString("bilalUri").orEmpty(),
+                bilalVolume = (o.optJSONObject("bunyi")?.optInt("bilalVol", 80) ?: 80).coerceIn(0, 100),
+                bilalVibrateOnly = o.optJSONObject("bunyi")?.optBoolean("getarSahaja", false) ?: false,
+                azanSound = o.optJSONObject("bunyi")?.optString("azanUri").orEmpty(),
+                azanVolume = (o.optJSONObject("bunyi")?.optInt("azanVol", 80) ?: 80).coerceIn(0, 100),
+                azan = o.optJSONObject("bunyi")?.optJSONObject("azan")?.let { a -> a.keys().asSequence().filter { a.optBoolean(it) }.toSet() } ?: emptySet(),
+                budgetDaily = o.optJSONObject("belanjaHad")?.optDouble("harian", 0.0)?.takeIf { !it.isNaN() && it > 0 } ?: 0.0,
+                budgetMonthly = o.optJSONObject("belanjaHad")?.optDouble("bulanan", 0.0)?.takeIf { !it.isNaN() && it > 0 } ?: 0.0,
             )
         }
     }

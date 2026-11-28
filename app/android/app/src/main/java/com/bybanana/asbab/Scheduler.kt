@@ -56,6 +56,7 @@ object Scheduler {
             put("exact", canExact(context))
         }.toString())
         repo.prune(now)
+        try { AsbabWidget.update(context) } catch (e: Exception) { android.util.Log.e("Asbab", "widget", e) }
     }
 
     /** Delivers every reminder that is due now, then arms the next alarm. Call off the main thread. */
@@ -67,14 +68,20 @@ object Scheduler {
         val tomorrow = Repo.tomorrow(now)
         val prayers = mapOf(today to repo.prayerOrFetch(s.zone, today), tomorrow to repo.prayer(s.zone, tomorrow))
         val events = Planner.plan(now, s, prayers, repo.notes(), repo.sentKeys())
+        val masjid = Planner.inMasjid(now, s, prayers[today])
         for (e in Planner.due(events, System.currentTimeMillis())) {
             repo.markSent(e.key) // first, so a crash can never repeat a reminder
-            val decision = Planner.decide(e, now, s, repo.solatDone(e.date), repo.proactiveCount(e.date))
+            val decision = Planner.decide(e, now, s, repo.solatDone(e.date), repo.proactiveCount(e.date), masjid)
             if (decision is Decision.Skip) continue
             val body = when (e.kind) {
                 Kind.BRIEF -> Planner.brief(e.date, s, repo.notes(), prayers[e.date], repo.downSites()) +
                     (Usage.yesterdayLine(context, repo, e.date)?.let { "\n$it" } ?: "")
                 Kind.CHECKIN -> aiCheckin(context, repo, e) ?: e.body
+                Kind.WEEKLY -> {
+                    val sun = java.time.LocalDate.parse(e.date)
+                    val marks = (0L..6L).map { sun.minusDays(it).toString() }.associateWith { repo.solatDone(it) }
+                    Planner.weekly(e.date, s, repo.notes(), marks)
+                }
                 else -> e.body
             }
             deliver(context, repo, e, body)
@@ -100,9 +107,20 @@ object Scheduler {
     }
 
     private fun deliver(context: Context, repo: Repo, e: Event, body: String) {
+        val s = repo.settings()
         repo.addProactiveMessage(body)
         if (e.kind == Kind.CHECKIN) repo.bumpProactive(e.date)
-        Notifier.show(context, e, body)
+        var silent = false
+        when (e.kind) {
+            Kind.BILAL -> when {
+                s.bilalVibrateOnly -> { SoundService.vibrate(context); silent = true }
+                s.bilalSound.isNotBlank() -> { SoundService.play(context, s.bilalSound, s.bilalVolume, e.title); silent = true }
+                else -> {}
+            }
+            Kind.AZAN -> { SoundService.play(context, s.azanSound, s.azanVolume, e.title); silent = true }
+            else -> {}
+        }
+        Notifier.show(context, e, body, silent)
     }
 
     fun canExact(context: Context): Boolean {

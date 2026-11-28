@@ -38,6 +38,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- Phase 6.1: home screen widget and Asbab's own sound player -->
+        <receiver android:name=".AsbabWidget" android:exported="true" android:label="Asbab">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_asbab_info" />
+        </receiver>
+        <service android:name=".SoundService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+
         <!-- Phase 4: invisible screen for the moon button's voice command -->
         <activity
             android:name=".VoiceActivity"
@@ -104,6 +113,9 @@
     <!-- Phase 3: foreground service with the "Jeda Asbab" button, and usage access -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Phase 6.1: playing Amin's own Mod Bilal / azan audio, and the fingerprint/PIN lock -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <!-- Phase 4: floating moon button over other apps -->

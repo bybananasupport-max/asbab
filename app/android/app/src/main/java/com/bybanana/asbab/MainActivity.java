@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         applyTextZoom();
+        AppLock.INSTANCE.onResume(this);
         Overlay.setAppVisible(this, true);
     }
 
@@ -47,6 +48,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onPause() {
+        AppLock.INSTANCE.onPause();
         Overlay.setAppVisible(this, false);
         super.onPause();
     }

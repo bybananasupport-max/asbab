@@ -191,7 +191,9 @@
         const local = await localBrain(text, { settings: s, room });
         if (local) {
           if (local.saved) changed();
-          const msg = await addMessage(roomId, { role: "asbab", text: local.reply, ai: false, saved: local.saved || 0, links: linksFor(local.notes || []) });
+          // Spending limits (Phase 6.1): a gentle warning under the reply.
+          const warn = (local.notes || []).some((n) => n.kind === "belanja") ? Core.budgetWarning(await notes(), now().date, s.belanjaHad) : "";
+          const msg = await addMessage(roomId, { role: "asbab", text: warn ? `${local.reply}\n${warn}` : local.reply, ai: false, saved: local.saved || 0, links: linksFor(local.notes || []) });
           return { user, messages: [msg], navigate: local.navigate || null };
         }
         // Second brain (Gemini, Claude or OpenAI), only when allowed.
@@ -268,7 +270,8 @@
         if (method === "POST" && !b) {
           const added = await addNotes([body], "manual");
           changed();
-          return { added };
+          const budget = added.some((n) => n.kind === "belanja") ? Core.budgetWarning(await notes(), now().date, s.belanjaHad) : "";
+          return { added, budget };
         }
         if (method === "DELETE" && b) {
           const list = await notes();

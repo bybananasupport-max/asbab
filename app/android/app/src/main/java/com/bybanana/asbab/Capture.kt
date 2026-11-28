@@ -71,6 +71,7 @@ object Capture {
                 Privacy.spending("$title $body")?.let { amount ->
                     repo.addNotes(listOf(NewNote("belanja", "$app: ${title.ifBlank { body }.take(60)}", Repo.today(), "", amount)), "notifikasi", body)
                     repo.markIngestedDone(setOf(item.id))
+                    Budget.check(context, repo)
                 }
             }
         }
