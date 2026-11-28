@@ -232,7 +232,15 @@
   // Lets a swipe from the left edge reach the page instead of Android's back gesture (chat screen only).
   const edgeSwipe = (on) => Asbab?.edgeSwipe({ on }).catch(() => {});
 
+  /* ---------- Phase 7.2: upgrades, crash reports ---------- */
+  const notify = (key, title, body, route) => Asbab?.notify({ key, title, body, route }).catch(() => {});
+  const downloadInstall = (url) => (Asbab ? Asbab.downloadInstall({ url }) : Promise.reject(new Error("Hanya dalam app Android.")));
+  const crashLog = async () => (Asbab ? Asbab.crashLog() : { log: "", gagalBuka: 0 });
+  const crashClear = () => Asbab?.crashClear();
+  const bootOk = () => Asbab?.bootOk().catch(() => {});
+
   window.Native = {
+    notify, downloadInstall, crashLog, crashClear, bootOk,
     aiStop, attachPut, attachGet, ocr, copyText, shareText, edgeSwipe,
     pickAudio, soundTest, soundStop, widgetUpdate,
     rememberTheme,

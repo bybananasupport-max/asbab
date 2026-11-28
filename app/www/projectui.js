@@ -25,8 +25,8 @@
     const archived = projects.filter((p) => p.id !== "asbab" && p.archived);
     const wrap = h("div", { class: "wrap" },
       A.topbar("Project",
-        h("button", { class: "cip", onclick: () => { localStorage.setItem("asbab:paparMedan", "1"); route(); } }, "Medan"),
-        h("button", { class: "cip", onclick: newProject }, "+ Project")));
+        h("button", { class: "cip", onclick: newProject }, "+ Project"),
+        h("button", { class: "cip kuat", onclick: () => Upgrades.newRequest() }, "+ Permintaan")));
     view.append(...nn([wrap]));
     if (asbab) wrap.append(...nn([await asbabCard(asbab)]));
     const rows = h("div", { class: "senarai" });
@@ -48,7 +48,7 @@
     if (archived.length) wrap.append(...nn([h("div", { class: "kumpulan" }, h("h4", {}, "Arkib"),
       h("div", { class: "senarai" }, ...archived.map((p) => h("a", { class: "baris", href: `#/project/${p.id}` },
         h("span", { class: "titik-w", style: { background: "var(--pudar)" } }), h("span", { class: "teks" }, h("strong", {}, p.name)), h("span", { class: "kanan" }, "›")))))]));
-    wrap.append(...nn([h("p", { class: "kecil", style: { textAlign: "center", marginTop: "12px" } }, "Medan Graviti kekal sebagai paparan pilihan (butang Medan di atas).")]));
+    wrap.append(...nn([h("div", { style: { textAlign: "center", marginTop: "12px" } }, h("button", { class: "cip", onclick: () => { localStorage.setItem("asbab:paparMedan", "1"); route(); } }, "Paparan Medan Graviti"))]));
   }
 
   // Five stages of an upgrade: Spesifikasi · Bekerja · Dibina · Ujian · Dipasang. Phase 7.2 fills in the real ones.
@@ -57,19 +57,22 @@
     return h("div", { class: `tahap${mini ? " mini" : ""}`, "aria-label": stage >= 0 ? `Tahap: ${STAGES[stage]}` : "Tiada upgrade berjalan" },
       ...STAGES.map((_, i) => h("i", { class: i < stage ? "siap" : i === stage ? "kini" : "" })));
   }
+  // The upgrade in progress (Phase 7.2): the most advanced request that is not finished.
   async function currentUpgrade() {
     try {
-      const { proposal } = await A.api("projects/asbab/proposal");
-      if (proposal && proposal.status === "menunggu") return { stage: 3, text: `${proposal.summary}: menunggu kelulusan kau` };
-    } catch { /* no proposal yet */ }
-    return { stage: -1, text: "Tiada upgrade berjalan" };
+      const { requests } = await A.api("minta/asbab");
+      const live = requests.filter((r) => !["dipasang", "ditolak"].includes(r.stage)).sort((a, b) => Upgrade.stageIndex(b.stage) - Upgrade.stageIndex(a.stage));
+      const r = live[0];
+      if (r) return { stage: Upgrade.stageIndex(r.stage), text: `${r.title}: ${r.stage === "ujian" ? "APK ujian sedia dicuba" : Upgrade.STAGE_NAMES[r.stage].toLowerCase()}`, n: live.length, test: r.stage === "ujian" };
+    } catch { /* offline */ }
+    return { stage: -1, text: "Tiada upgrade berjalan", n: 0 };
   }
   async function asbabCard(p) {
     const up = await currentUpgrade();
     return h("a", { class: "kad asbabkad", href: `#/project/${p.id}` },
       h("div", { class: "baris-asbab" }, h("span", { class: "logo-a" }, "A"),
         h("div", { style: { flex: 1 } }, h("strong", {}, "Asbab sendiri"), h("div", { class: "kecil" }, `Versi ${A.boot.version} · repo asbab`)),
-        up.stage >= 0 ? h("span", { class: "lencana kuning" }, "1 menunggu") : h("span", { class: "lencana hijau" }, "terkini")),
+        up.stage >= 0 ? h("span", { class: "lencana kuning" }, up.test ? "1 ujian" : `${up.n} berjalan`) : h("span", { class: "lencana hijau" }, "terkini")),
       stageBar(up.stage, true),
       h("div", { class: "kecil" }, up.text));
   }
@@ -153,7 +156,9 @@
     await A.renderChat(view, `p-${p.id}`, {
       embedded: true, into: chatBox,
       onSend: async (text) => {
-        // Code projects (Phase 5 flow): a change request becomes a proposal, nothing changes before Amin approves.
+        // Asbab sendiri (Phase 7.2): a change request becomes a spec first (nothing runs before Teruskan).
+        if (p.special && Views.CHANGE.test(text)) { Upgrades.newRequest(p, { text }); return true; }
+        // Other code projects (Phase 5 flow): a change request becomes a proposal, nothing changes before Amin approves.
         if (p.type !== "kod" || !Views.CHANGE.test(text)) return false;
         setSeg("kerja");
         await Views.proposeChange(p, text, $(".blok-permintaan .isi-blok") || kerjaBox);
@@ -220,6 +225,7 @@
     chat: (p, el, d, ctx) => el.append(...nn([h("button", { class: "kad item", onclick: () => ctx.setSeg("sembang") }, h("strong", {}, "Buka Sembang"), h("span", { class: "kecil" }, "Chat penuh skrin untuk project ini"))])),
 
     permintaan: async (p, el) => {
+      if (p.special) return Upgrades.permintaanBlock(p, el);
       el.append(...nn([h("p", { class: "kecil" }, p.type === "kod" ? "Minta perubahan dalam Sembang (contohnya \"tambah butang kongsi\"). Asbab tunjuk cadangan dulu; tiada apa berubah sebelum kau lulus." : "Permintaan perubahan kod hanya untuk project Kod.")]));
       if (p.type !== "kod") return;
       const work = h("div", { class: "stack" });
@@ -228,6 +234,7 @@
     },
 
     binaan: async (p, el) => {
+      if (p.special) return Upgrades.binaanBlock(p, el);
       const repo = (p.repo || "").trim();
       if (!repo) return el.append(...nn([h("p", { class: "kecil" }, "Tetapkan repo GitHub dalam Butiran untuk lihat binaan.")]));
       const r = await Native.github("GET", `/repos/${repo}/actions/runs?per_page=6`);

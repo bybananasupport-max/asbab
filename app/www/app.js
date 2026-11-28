@@ -157,6 +157,10 @@ async function start() {
     secrets: Native.secretStatus, githubRequest: Native.github,
   });
   A.boot = await A.api("bootstrap");
+  // Phase 7.2: Asbab opened fine (resets the safe-mode counter); show "Apa yang baharu" after an update.
+  Native.bootOk();
+  if (A.boot.whatsNew) setTimeout(() => Upgrades.showWhatsNew(A.boot.whatsNew), 1200);
+  Upgrades.startMonitor();
   Theme.apply();
   document.body.classList.toggle("ringan", A.boot.settings.animations === "ringan");
   $("#app").hidden = false;
@@ -999,6 +1003,9 @@ const Ambient = {
 A.Ambient = Ambient;
 
 /* ---------- Boot ---------- */
+// Phase 7.2: errors in the web UI are kept (last 20) so one tap can turn them into a "Baiki bug" request.
+addEventListener("error", (e) => Upgrades?.keepError?.(`${e.message} @ ${(e.filename || "").split("/").pop()}:${e.lineno}`));
+addEventListener("unhandledrejection", (e) => Upgrades?.keepError?.(`Promise: ${e.reason?.message || e.reason}`));
 Scene.build();
 Scene.setPeriod(Scene.periodFrom(null));
 start().catch((e) => {

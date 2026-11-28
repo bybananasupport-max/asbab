@@ -27,7 +27,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(AsbabPlugin.class);
+        SafeMode.install(this);
         super.onCreate(savedInstanceState);
+        SafeMode.onStart(this);
         keepRoute(getIntent());
         Notifier.INSTANCE.ensureChannels(this);
         watchKeyboard();
