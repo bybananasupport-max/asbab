@@ -42,6 +42,7 @@ data class Part(val mime: String, val data: String, val name: String = "") {
     val kind: String get() = when {
         mime.startsWith("image/") -> "image"
         mime.startsWith("video/") -> "video"
+        mime.startsWith("audio/") -> "audio"
         mime == "application/pdf" -> "pdf"
         else -> "other"
     }
@@ -138,7 +139,7 @@ object GeminiSpec : ProviderSpec {
     // The key goes in a header, never in the URL (so it cannot end up in logs).
     private fun headers(key: String) = mapOf("x-goog-api-key" to key, "content-type" to "application/json")
 
-    override val reads = setOf("image", "pdf", "video")
+    override val reads = setOf("image", "pdf", "video", "audio")
 
     override fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean, parts: List<Part>): HttpCall {
         val m = model.removePrefix("models/")

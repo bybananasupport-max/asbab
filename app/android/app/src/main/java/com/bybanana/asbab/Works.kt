@@ -63,21 +63,31 @@ object Sites {
         emptyList()
     }
 
-    private fun probe(url: String): Int? = try {
-        val c = URL(url).openConnection() as HttpURLConnection
-        c.instanceFollowRedirects = true
-        c.connectTimeout = 10_000
-        c.readTimeout = 10_000
-        c.setRequestProperty("User-Agent", "Asbab-monitor")
-        try { c.responseCode } finally { c.disconnect() }
-    } catch (e: Exception) {
-        null
+    /** HTTP status and response time in ms (null status = no answer). */
+    data class Probe(val code: Int?, val ms: Long)
+
+    fun probe(url: String): Probe {
+        val t0 = System.currentTimeMillis()
+        return try {
+            val c = URL(url).openConnection() as HttpURLConnection
+            c.instanceFollowRedirects = true
+            c.connectTimeout = 10_000
+            c.readTimeout = 10_000
+            c.setRequestProperty("User-Agent", "Asbab-monitor")
+            try { Probe(c.responseCode, System.currentTimeMillis() - t0) } finally { c.disconnect() }
+        } catch (e: Exception) {
+            Probe(null, System.currentTimeMillis() - t0)
+        }
     }
 
     fun checkAll(context: Context) {
         val repo = Repo(context)
-        val results = watched(repo).associate { it.optString("id") to SiteCheck.status(probe(it.optString("url"))) }
-        if (results.isEmpty()) return
+        val probes = watched(repo).associate { it.optString("id") to probe(it.optString("url")) }
+        if (probes.isEmpty()) return
+        val results = probes.mapValues { SiteCheck.status(it.value.code) }
+        // Phase 7.1: history for the uptime and response-time chart (one week at 15 minutes).
+        val now = System.currentTimeMillis()
+        for ((id, pr) in probes) repo.db.update("uptime:$id") { raw -> SiteCheck.appendHistory(raw, now, results[id] == "ok", pr.ms, pr.code) }
         val changes = mutableListOf<Triple<String, String, String>>() // id, name, message
         repo.db.update("projects") { raw ->
             val a = try { JSONArray(raw ?: "[]") } catch (e: Exception) { JSONArray() }
@@ -86,7 +96,9 @@ object Sites {
                 val st = results[p.optString("id")] ?: continue
                 val old = if (p.isNull("status")) null else p.optString("status")
                 SiteCheck.message(p.optString("name"), p.optString("url"), old, st)?.let { changes += Triple(p.optString("id"), p.optString("name"), it) }
-                if (old != st) { p.put("status", st); p.put("checkedAt", System.currentTimeMillis()) }
+                if (old != st) p.put("status", st)
+                p.put("checkedAt", now)
+                probes[p.optString("id")]?.let { p.put("ms", it.ms) }
             }
             a.toString()
         }
