@@ -152,37 +152,107 @@ nav.bar a.aktif span { margin-top: 0; }
 .sheet .pilihan .isi-pilihan { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; min-width: 0; }
 
 /* ---------- chat ---------- */
-.msgs { gap: 14px; margin-top: 6px; padding-bottom: 150px; }
-.msg { font-family: var(--font); }
-.msg.asbab { font-size: 1rem; line-height: 1.6; padding: 0; background: none !important; border: 0 !important; box-shadow: none; }
+main#view { scroll-behavior: auto; }
+/* Room bar fixed at the top, thin glass (Phase 6.2) */
+.chat-atas-tetap {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 30; padding: calc(8px + var(--sa-top)) 16px 8px;
+  background: var(--kaca); border-bottom: 1px solid var(--garis); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+:root:not(.cerah) .chat-atas-tetap { background: color-mix(in srgb, var(--bg) 55%, transparent); }
+.chat-atas-tetap .topbar { max-width: 430px; margin: 0 auto; min-height: 40px; }
+body.di-chat main#view {
+  padding-top: calc(66px + var(--sa-top));
+  padding-bottom: calc(var(--nav-ruang, 90px) + 8px + var(--composer-h, 52px) + 52px);
+}
+body.di-chat.papan-kekunci main#view { padding-bottom: calc(var(--kb, 0px) + 8px + var(--composer-h, 52px) + 16px); }
+.msgs { gap: 14px; margin-top: 6px; padding-bottom: 0; }
+.msg { font-family: var(--font); white-space: normal; }
+.msg.user .isi-msg { white-space: pre-wrap; }
+.msg.asbab { font-size: 1rem; line-height: 1.6; padding: 0; background: none !important; border: 0 !important; box-shadow: none; max-width: 100%; }
 .msg.user {
   max-width: 80%; padding: 9px 13px; border-radius: 18px 18px 6px 18px; background: var(--kad); border: 1px solid var(--garis); font-size: 1rem; line-height: 1.5;
 }
 .msg .meta { font-size: .72rem; color: var(--pudar); margin-top: 4px; gap: 0; display: block; }
-.msg .meta span + span::before, .msg .meta time + span::before { content: " · "; }
+.msg .meta span + span::before { content: " · "; }
+.msg .nota-msg { font-size: .75rem; color: var(--aksen); margin-top: 4px; }
+/* formatted answers */
+.isi-msg p { margin: 0 0 .6em; }
+.isi-msg p:last-child { margin-bottom: 0; }
+.isi-msg ul, .isi-msg ol { margin: .2em 0 .6em; padding-left: 1.3em; }
+.isi-msg li { margin: .15em 0; }
+.isi-msg li::marker { color: var(--pudar); }
+.isi-msg strong { font-weight: 650; }
+.isi-msg code { font-family: ui-monospace, "Roboto Mono", monospace; font-size: .88em; padding: 1px 5px; border-radius: 6px; background: var(--kad); border: 1px solid var(--garis); }
+.isi-msg pre { margin: .4em 0 .7em; padding: 10px 12px; border-radius: 12px; background: var(--kad); border: 1px solid var(--garis); overflow-x: auto; }
+.isi-msg pre code { padding: 0; border: 0; background: none; white-space: pre; }
+.isi-msg a { color: var(--aksen); text-decoration: underline; text-underline-offset: 2px; word-break: break-word; }
+.isi-msg .md-tajuk { margin-top: .4em; }
+/* date between days */
+.pemisah-tarikh { display: flex; justify-content: center; margin: 4px 0; }
+.pemisah-tarikh span { font-size: .72rem; color: var(--pudar); padding: 3px 10px; border-radius: 99px; background: var(--kad); border: 1px solid var(--garis); }
+/* attachments shown in a message */
+.lampiran-msg { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; justify-content: flex-end; }
+.lampiran-gambar { width: 120px; height: 120px; border-radius: 12px; background: var(--kad) center / cover; border: 1px solid var(--garis); position: relative; }
+.lampiran-gambar.video::after { content: "▶"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 1.4rem; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
+.lampiran-fail { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 12px; background: var(--kad); border: 1px solid var(--garis); font-size: .82rem; max-width: 220px; }
+.lampiran-fail span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lampiran-fail svg { width: 16px; height: 16px; stroke: var(--pudar); fill: none; stroke-width: 1.7; }
 .msg-pautan { gap: 8px; margin-top: 8px; }
 .msg-pautan .aksi, .aksi {
   display: inline-flex; align-items: center; gap: 6px; min-height: 0; padding: 6px 12px; border-radius: 99px;
   border: 1px solid var(--aksen); color: var(--aksen); background: none; font-size: .82rem; font-weight: 400;
 }
+.ask-ai { margin-top: 4px; }
 .chat-kosong { padding: 24px 2px 4px; }
 .chat-kosong h2 { font-size: 1.3rem; }
-.cadangan {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + 56px + var(--sa-bottom)); width: min(400px, calc(100% - 24px));
-  display: flex; gap: 8px; overflow-x: auto; padding: 6px 0 2px; z-index: 14; scrollbar-width: none;
-}
-.cadangan::-webkit-scrollbar { display: none; }
-.cadangan button { flex: none; padding: 7px 12px; border-radius: 99px; border: 1px solid var(--garis); background: color-mix(in srgb, var(--bg) 40%, transparent); color: var(--pudar); font: inherit; font-size: .82rem; }
+
+/* composer: 8px above the bottom bar (measured), or right above the keyboard */
 .composer {
-  bottom: calc(86px + var(--sa-bottom)); width: min(400px, calc(100% - 24px)); align-items: center; gap: 8px;
-  padding: 6px 6px 6px 14px; border-radius: 24px; z-index: 15;
+  bottom: calc(var(--nav-ruang, 90px) + 8px); width: min(400px, calc(100% - 24px)); display: block;
+  padding: 5px; border-radius: 24px; z-index: 15; transition: none;
 }
-.composer textarea { min-height: 0; padding: 8px 0; line-height: 1.4; }
-.composer .icon-btn { width: 38px; height: 38px; background: none; color: var(--pudar); }
-.composer .icon-btn.send { background: var(--teks); color: var(--bg); }
+body.papan-kekunci .composer { bottom: calc(var(--kb, 0px) + 8px); }
+.composer .baris-taip { display: flex; align-items: flex-end; gap: 4px; }
+.composer textarea:focus, .composer textarea:focus-visible { outline: none; box-shadow: none; }
+.composer textarea { flex: 1; border: 0; background: transparent; min-height: 0; padding: 9px 4px; line-height: 1.4; max-height: 140px; }
+.composer .icon-btn { width: 38px; height: 38px; flex: none; background: none; color: var(--pudar); }
+.composer .icon-btn.send { background: var(--teks); color: var(--bg); transition: opacity .2s, transform .2s; }
+.composer .icon-btn.send:disabled { opacity: .25; transform: scale(.9); }
+.composer .icon-btn.send.henti { background: var(--bahaya); color: #fff; }
 .composer .icon-btn svg { width: 18px; height: 18px; }
+.composer .icon-btn.tambah svg { width: 20px; height: 20px; }
 .composer .icon-btn.rakam { background: var(--bahaya); color: #fff; }
-body.papan-kekunci .cadangan { bottom: calc(8px + 56px + var(--kb, 0px)); }
+.lampiran-tray { display: flex; gap: 6px; overflow-x: auto; padding: 4px 4px 6px; }
+.lampiran-pra { position: relative; flex: none; width: 58px; height: 58px; border-radius: 12px; background: var(--kad) center / cover; border: 1px solid var(--garis); display: grid; place-items: center; }
+.lampiran-pra:not(.gambar) { width: auto; max-width: 150px; height: 44px; padding: 0 28px 0 10px; }
+.lampiran-pra .nama { font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lampiran-pra .main-ikon { color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.6); }
+.lampiran-pra .buang { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; background: rgba(0,0,0,.6); color: #fff; font-size: .8rem; line-height: 1; }
+.sheet .ikon-pilihan svg { width: 20px; height: 20px; stroke: var(--pudar); fill: none; stroke-width: 1.7; }
+.sheet .pilihan .muted { font-size: .8rem; }
+
+/* suggestions just above the composer */
+.cadangan {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-ruang, 90px) + 8px + var(--composer-h, 52px) + 6px);
+  width: min(400px, calc(100% - 24px)); display: flex; gap: 8px; overflow-x: auto; padding: 2px 0; z-index: 14; scrollbar-width: none;
+}
+/* keyboard open: keep only the composer, so more of the conversation stays visible */
+body.papan-kekunci .cadangan { display: none; }
+.cadangan::-webkit-scrollbar { display: none; }
+.cadangan button { flex: none; padding: 7px 12px; border-radius: 99px; border: 1px solid var(--garis); background: color-mix(in srgb, var(--bg) 88%, transparent); color: var(--pudar); font: inherit; font-size: .82rem; }
+/* "↓" to the newest message */
+.ke-bawah {
+  position: fixed; right: max(16px, calc(50% - 200px)); z-index: 16; width: 38px; height: 38px; border-radius: 50%; padding: 0;
+  bottom: calc(var(--nav-ruang, 90px) + 8px + var(--composer-h, 52px) + 52px);
+  display: grid; place-items: center; background: var(--kaca); border: 1px solid var(--garis); color: var(--teks);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 6px 18px rgba(0,0,0,.25);
+  opacity: 0; transform: translateY(8px) scale(.9); pointer-events: none; transition: opacity .2s, transform .2s;
+}
+body.papan-kekunci .ke-bawah { bottom: calc(var(--kb, 0px) + 8px + var(--composer-h, 52px) + 10px); }
+.ke-bawah.nampak { opacity: 1; transform: none; pointer-events: auto; }
+.ke-bawah svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+body.papan-kekunci nav.bar { display: none; }
+body.papan-kekunci main#view { padding-bottom: calc(var(--kb, 0px) + 96px); }
 
 /* ---------- Hari Ini ---------- */
 .salam-kepala { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }

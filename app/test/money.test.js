@@ -35,3 +35,19 @@ describe("ringgit amount detection (no AI)", () => {
     expect(Money.rm("12.5")).toBe("RM12.50");
   });
 });
+
+describe("receipts (Phase 6.2)", () => {
+  it("finds the total line, not subtotal, tax or change", () => {
+    const t = "KEDAI MAKAN ALI\nNasi lemak 6.00\nTeh tarik 2.50\nSUBTOTAL 8.50\nSST 0.00\nTOTAL RM 8.50\nCASH 10.00\nCHANGE 1.50";
+    expect(Money.receiptTotal(t)).toBe(8.5);
+    expect(Money.receiptShop(t)).toBe("KEDAI MAKAN ALI");
+  });
+  it("reads a total on the next line and thousands", () => {
+    expect(Money.receiptTotal("Grand Total\n1,250.00")).toBe(1250);
+    expect(Money.receiptTotal("JUMLAH BESAR RM23.90")).toBe(23.9);
+  });
+  it("falls back to the biggest amount, or null", () => {
+    expect(Money.receiptTotal("Roti 2.00\nKopi 3.50")).toBe(3.5);
+    expect(Money.receiptTotal("tiada nombor di sini")).toBeNull();
+  });
+});

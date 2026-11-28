@@ -54,3 +54,13 @@ describe("chat room AI choice", () => {
     expect(Ai.active({ ai: { providers: { claude: { on: false } } } }, keys)).toEqual(["gemini", "openai"]);
   });
 });
+
+describe("attachments (Phase 6.2)", () => {
+  it("only providers that read every attachment, and says which one was skipped", () => {
+    const keys = { gemini: true, claude: true, openai: true };
+    expect(Ai.chainFor({}, "chat", { keys, prefer: "claude" }, ["video"])).toEqual({ ids: ["gemini"], switchedFrom: "claude" });
+    expect(Ai.chainFor({}, "chat", { keys, prefer: "openai" }, ["image", "pdf"]).ids[0]).toBe("openai");
+    expect(Ai.chainFor({}, "chat", { keys: { claude: true } }, ["video"])).toEqual({ ids: [], switchedFrom: "claude" });
+    expect(Ai.kindOf("application/pdf")).toBe("pdf");
+  });
+});

@@ -3,8 +3,7 @@
   "appName": "Asbab",
   "webDir": "www",
   "android": {
-    "allowMixedContent": false,
-    "captureInput": true
+    "allowMixedContent": false
   },
   "plugins": {
     "SystemBars": { "insetsHandling": "css", "style": "DARK" }

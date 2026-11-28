@@ -37,6 +37,16 @@ fun rawDetail(status: Int, body: String): String {
     }
 }
 
+/** One attachment sent with a prompt (Phase 6.2): base64 data, already compressed on the phone. */
+data class Part(val mime: String, val data: String, val name: String = "") {
+    val kind: String get() = when {
+        mime.startsWith("image/") -> "image"
+        mime.startsWith("video/") -> "video"
+        mime == "application/pdf" -> "pdf"
+        else -> "other"
+    }
+}
+
 /** One HTTP request, built without touching the network. */
 data class HttpCall(val method: String, val url: String, val headers: Map<String, String>, val body: String?)
 
@@ -47,7 +57,10 @@ interface ProviderSpec {
     val fallbackChat: String
     val fallbackCoding: String
 
-    fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean): HttpCall
+    fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean, parts: List<Part> = emptyList()): HttpCall
+    /** Attachment kinds this provider reads ("image", "pdf", "video"). */
+    val reads: Set<String>
+    fun supports(parts: List<Part>) = parts.all { it.kind in reads }
     /** Text added by one streamed line ("data: ..."), "" for nothing, null when the stream says it is done. */
     fun streamText(line: String): String?
     /** Error carried inside a streamed line, if any. */
@@ -125,12 +138,17 @@ object GeminiSpec : ProviderSpec {
     // The key goes in a header, never in the URL (so it cannot end up in logs).
     private fun headers(key: String) = mapOf("x-goog-api-key" to key, "content-type" to "application/json")
 
-    override fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean): HttpCall {
+    override val reads = setOf("image", "pdf", "video")
+
+    override fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean, parts: List<Part>): HttpCall {
         val m = model.removePrefix("models/")
         val url = if (stream) "$BASE/models/$m:streamGenerateContent?alt=sse" else "$BASE/models/$m:generateContent"
         val body = JSONObject().apply {
             if (system.isNotBlank()) put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
-            put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
+            val ps = JSONArray()
+            for (a in parts) ps.put(JSONObject().put("inline_data", JSONObject().put("mime_type", a.mime).put("data", a.data)))
+            ps.put(JSONObject().put("text", prompt))
+            put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts", ps)))
             put("generationConfig", JSONObject().put("maxOutputTokens", maxTokens.coerceIn(16, 65_536)))
         }
         return HttpCall("POST", url, headers(key), body.toString())
@@ -218,7 +236,9 @@ object ClaudeSpec : ProviderSpec {
 
     private fun headers(key: String) = mapOf("x-api-key" to key, "anthropic-version" to "2023-06-01", "content-type" to "application/json")
 
-    override fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean): HttpCall {
+    override val reads = setOf("image", "pdf")
+
+    override fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean, parts: List<Part>): HttpCall {
         val body = JSONObject().apply {
             put("model", model)
             put("max_tokens", maxTokens.coerceIn(16, 32_000))
@@ -226,7 +246,13 @@ object ClaudeSpec : ProviderSpec {
             if (system.isNotBlank()) put("system", JSONArray().put(JSONObject().apply {
                 put("type", "text"); put("text", system); put("cache_control", JSONObject().put("type", "ephemeral"))
             }))
-            put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
+            val content: Any = if (parts.isEmpty()) prompt else JSONArray().apply {
+                for (a in parts) put(JSONObject()
+                    .put("type", if (a.kind == "pdf") "document" else "image")
+                    .put("source", JSONObject().put("type", "base64").put("media_type", a.mime).put("data", a.data)))
+                put(JSONObject().put("type", "text").put("text", prompt))
+            }
+            put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
         }
         return HttpCall("POST", "$BASE/messages", headers(key), body.toString())
     }
@@ -291,12 +317,22 @@ object OpenAiSpec : ProviderSpec {
 
     private fun headers(key: String) = mapOf("authorization" to "Bearer $key", "content-type" to "application/json")
 
-    override fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean): HttpCall {
+    override val reads = setOf("image", "pdf")
+
+    override fun generate(key: String, model: String, system: String, prompt: String, maxTokens: Int, stream: Boolean, parts: List<Part>): HttpCall {
         val body = JSONObject().apply {
             put("model", model)
             val msgs = JSONArray()
             if (system.isNotBlank()) msgs.put(JSONObject().put("role", "system").put("content", system))
-            msgs.put(JSONObject().put("role", "user").put("content", prompt))
+            val content: Any = if (parts.isEmpty()) prompt else JSONArray().apply {
+                put(JSONObject().put("type", "text").put("text", prompt))
+                for (a in parts) {
+                    val url = "data:${a.mime};base64,${a.data}"
+                    if (a.kind == "pdf") put(JSONObject().put("type", "file").put("file", JSONObject().put("filename", a.name.ifBlank { "fail.pdf" }).put("file_data", url)))
+                    else put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", url)))
+                }
+            }
+            msgs.put(JSONObject().put("role", "user").put("content", content))
             put("messages", msgs)
             put("max_completion_tokens", maxTokens.coerceIn(16, 64_000))
             if (stream) put("stream", true)
@@ -383,6 +419,18 @@ data class AiConfig(
             val p = providers[id] ?: return@filter false
             Providers.byId(id) != null && p.on && hasKey(id) && used(id) < p.cap && (!personal || p.personal)
         }
+    }
+
+    /**
+     * Same chain, but only providers that can read every attachment (Phase 6.2). switchedFrom = the provider that
+     * would have answered but cannot read the attachments, so Asbab can say which one it used instead.
+     */
+    fun chainFor(role: String, prefer: String?, parts: List<Part>, hasKey: (String) -> Boolean, used: (String) -> Int): Pair<List<String>, String?> {
+        val all = chainPrefer(role, false, prefer, hasKey, used)
+        if (parts.isEmpty()) return all to null
+        val ok = all.filter { Providers.byId(it)?.supports(parts) == true }
+        val first = all.firstOrNull()
+        return ok to (if (first != null && first != ok.firstOrNull()) first else null)
     }
 
     /** Everything that could ever be used, ignoring today's usage (for "is a second brain connected?"). */

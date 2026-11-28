@@ -327,14 +327,25 @@ class AsbabPlugin : Plugin() {
         val prompt = call.getString("prompt") ?: return call.reject("prompt diperlukan")
         val maxTokens = call.getInt("maxTokens") ?: if (role == "coding") 16_000 else 1_200
         val prefer = call.getString("prefer")?.takeIf { it != "auto" }
+        // Phase 6.2: pictures, PDF and video sent with the message (base64, compressed in the web UI).
+        val parts = try {
+            val arr = call.getArray("parts")
+            if (arr == null) emptyList() else (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val data = o.optString("data")
+                if (data.isBlank()) null else com.bybanana.asbab.core.Part(o.optString("mime"), data, o.optString("name"))
+            }
+        } catch (e: Exception) { emptyList() }
         net.execute {
             try {
                 val a = AiRouter.run(context, role, false, system, prompt, maxTokens, { soFar ->
                     notifyListeners("aiDelta", JSObject().put("id", id).put("text", soFar))
-                }, prefer)
+                }, prefer, parts) { stopped.contains(id) }
+                stopped.remove(id)
                 call.resolve(JSObject().apply {
                     put("text", a.text); put("provider", a.provider); put("label", a.label); put("model", a.model)
                     put("fallback", a.fallback); put("failures", JSArray().apply { a.failures.forEach { put(it) } })
+                    put("note", a.note)
                 })
             } catch (e: AiFailure) {
                 call.reject(e.error.message)
@@ -342,6 +353,94 @@ class AsbabPlugin : Plugin() {
                 call.reject("Otak kedua: ralat tak dijangka [${e.javaClass.simpleName}: ${e.message ?: ""}]")
             }
         }
+    }
+
+    /** Answers whose "Berhenti" button was pressed; the stream stops at its next line. */
+    private val stopped: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+
+    @PluginMethod
+    fun aiStop(call: PluginCall) {
+        call.getString("id")?.let { stopped.add(it) }
+        call.resolve()
+    }
+
+    /* ---------- Phase 6.2: attachments stay on this phone only (not in the GitHub backup) ---------- */
+
+    private fun attachFile(id: String) = java.io.File(java.io.File(context.filesDir, "lampiran").apply { mkdirs() }, id.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+
+    @PluginMethod
+    fun attachPut(call: PluginCall) {
+        val id = call.getString("id") ?: return call.reject("id diperlukan")
+        val data = call.getString("data") ?: return call.reject("data diperlukan")
+        net.execute {
+            try { attachFile(id).writeText(data); call.resolve() } catch (e: Exception) { call.reject("Lampiran tak dapat disimpan: ${e.message}") }
+        }
+    }
+
+    @PluginMethod
+    fun attachGet(call: PluginCall) {
+        val id = call.getString("id") ?: return call.reject("id diperlukan")
+        net.execute {
+            val f = attachFile(id)
+            if (!f.exists()) call.resolve(JSObject().put("data", null as String?))
+            else try { call.resolve(JSObject().put("data", f.readText())) } catch (e: Exception) { call.reject("Lampiran tak dapat dibaca.") }
+        }
+    }
+
+    /** Reads text in a picture on the phone itself (no AI), used for receipts. */
+    @PluginMethod
+    fun ocr(call: PluginCall) {
+        val data = call.getString("data") ?: return call.reject("data diperlukan")
+        try {
+            val bytes = android.util.Base64.decode(data, android.util.Base64.DEFAULT)
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return call.resolve(JSObject().put("ok", false).put("text", ""))
+            com.google.mlkit.vision.text.TextRecognition.getClient(com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS)
+                .process(com.google.mlkit.vision.common.InputImage.fromBitmap(bmp, 0))
+                .addOnSuccessListener { r -> call.resolve(JSObject().put("ok", true).put("text", r.text)) }
+                .addOnFailureListener { e -> call.resolve(JSObject().put("ok", false).put("text", "").put("detail", e.message ?: "")) }
+        } catch (e: Throwable) {
+            call.resolve(JSObject().put("ok", false).put("text", "").put("detail", e.message ?: e.javaClass.simpleName))
+        }
+    }
+
+    @PluginMethod
+    fun shareText(call: PluginCall) {
+        val text = call.getString("text") ?: return call.reject("text diperlukan")
+        try {
+            val send = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text) }
+            activity.startActivity(Intent.createChooser(send, "Kongsi"))
+            call.resolve()
+        } catch (e: Exception) {
+            call.reject("Tak dapat kongsi: ${e.message}")
+        }
+    }
+
+    /**
+     * Chat screen: a strip on the left edge (200dp tall, from 30% of the height) is taken from Android's back
+     * gesture so a swipe there can open the drawer. Off on other pages.
+     */
+    @PluginMethod
+    fun edgeSwipe(call: PluginCall) {
+        val on = call.getBoolean("on") ?: false
+        activity.runOnUiThread {
+            try {
+                val wv = bridge.webView
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val d = context.resources.displayMetrics.density
+                    val top = (wv.height * 0.3f).toInt()
+                    wv.systemGestureExclusionRects = if (on) listOf(android.graphics.Rect(0, top, (28 * d).toInt(), top + (200 * d).toInt())) else emptyList()
+                }
+            } catch (e: Exception) {}
+            call.resolve()
+        }
+    }
+
+    @PluginMethod
+    fun copyText(call: PluginCall) {
+        val text = call.getString("text") ?: return call.reject("text diperlukan")
+        val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("Asbab", text))
+        call.resolve()
     }
 
     /** Today's usage per provider: {count, by: {gemini: n, ...}}. */

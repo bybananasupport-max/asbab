@@ -3,6 +3,7 @@ package com.bybanana.asbab
 import android.content.Context
 import com.bybanana.asbab.core.AiConfig
 import com.bybanana.asbab.core.AiError
+import com.bybanana.asbab.core.Part
 import com.bybanana.asbab.core.HttpCall
 import com.bybanana.asbab.core.ProviderSpec
 import com.bybanana.asbab.core.Providers
@@ -59,9 +60,9 @@ object AiClient {
         throw network(spec, e, timeoutMs)
     }
 
-    fun complete(spec: ProviderSpec, key: String, model: String, system: String, prompt: String, maxTokens: Int, timeoutMs: Int = ANSWER_MS): String =
+    fun complete(spec: ProviderSpec, key: String, model: String, system: String, prompt: String, maxTokens: Int, timeoutMs: Int = ANSWER_MS, parts: List<Part> = emptyList()): String =
         guarded(spec, timeoutMs) {
-            val call = spec.generate(key, model, system, prompt, maxTokens, false)
+            val call = spec.generate(key, model, system, prompt, maxTokens, false, parts)
             val c = open(call, timeoutMs)
             try {
                 call.body?.let { b -> c.outputStream.use { it.write(b.toByteArray()) } }
@@ -73,11 +74,11 @@ object AiClient {
         }
 
     /** Streams an answer; [onText] gets the text so far. A broken stream after some text returns that text. */
-    fun stream(spec: ProviderSpec, key: String, model: String, system: String, prompt: String, maxTokens: Int, onText: (String) -> Unit): String {
+    fun stream(spec: ProviderSpec, key: String, model: String, system: String, prompt: String, maxTokens: Int, onText: (String) -> Unit, parts: List<Part> = emptyList(), stopped: () -> Boolean = { false }): String {
         val out = StringBuilder()
         return try {
             guarded(spec, ANSWER_MS) {
-                val call = spec.generate(key, model, system, prompt, maxTokens, true)
+                val call = spec.generate(key, model, system, prompt, maxTokens, true, parts)
                 val c = open(call, ANSWER_MS)
                 try {
                     call.body?.let { b -> c.outputStream.use { it.write(b.toByteArray()) } }
@@ -85,6 +86,8 @@ object AiClient {
                     var last = 0L
                     c.inputStream.bufferedReader().useLines { lines ->
                         for (line in lines) {
+                            // "Berhenti" pressed: keep what has arrived and close the connection.
+                            if (stopped()) break
                             spec.streamError(line)?.let { if (out.isEmpty()) throw AiFailure(it) }
                             val piece = spec.streamText(line) ?: break
                             if (piece.isEmpty()) continue
@@ -94,6 +97,7 @@ object AiClient {
                         }
                     }
                     onText(out.toString())
+                    if (out.isEmpty() && stopped()) return@guarded ""
                     if (out.isEmpty()) throw AiFailure(AiError("${spec.label}: jawapan kosong.", 200, true, "Pelayan membalas tanpa teks."))
                     out.toString()
                 } finally {
@@ -122,7 +126,7 @@ object AiClient {
  * out of quota. Counts usage per provider. Returns null-safe results so callers can fall back to the own brain.
  */
 object AiRouter {
-    data class Answer(val text: String, val provider: String, val label: String, val model: String, val fallback: Boolean, val failures: List<String>)
+    data class Answer(val text: String, val provider: String, val label: String, val model: String, val fallback: Boolean, val failures: List<String>, val note: String = "")
 
     fun config(context: Context): AiConfig = AiConfig.from(try { JSONObject(AsbabDb.get(context).get("settings") ?: "{}") } catch (e: Exception) { null })
 
@@ -140,10 +144,14 @@ object AiRouter {
     fun run(
         context: Context, role: String, personal: Boolean, system: String, prompt: String, maxTokens: Int,
         onText: ((String) -> Unit)?, prefer: String? = null,
+        parts: List<Part> = emptyList(), stopped: () -> Boolean = { false },
     ): Answer {
         val repo = Repo(context)
         val cfg = config(context)
-        val chain = cfg.chainPrefer(role, personal, prefer, { hasKey(context, it) }, { repo.usageFor(it) })
+        val (chain, switchedFrom) = if (parts.isEmpty()) cfg.chainPrefer(role, personal, prefer, { hasKey(context, it) }, { repo.usageFor(it) }) to null
+            else cfg.chainFor(role, prefer, parts, { hasKey(context, it) }, { repo.usageFor(it) })
+        if (parts.isNotEmpty() && chain.isEmpty()) throw AiFailure(AiError(
+            "Tiada otak kedua yang aktif boleh membaca lampiran ini (${parts.map { it.kind }.distinct().joinToString()}). Hidupkan penyedia yang menyokongnya dalam Tetapan > Sambungan dan API.", 0, true))
         val failures = mutableListOf<String>()
         for ((i, id) in chain.withIndex()) {
             val spec = Providers.byId(id) ?: continue
@@ -152,10 +160,11 @@ object AiRouter {
             if (model.isBlank()) { failures += "${spec.label}: model belum dipilih"; continue }
             try {
                 onText?.invoke("")
-                val text = if (onText != null) AiClient.stream(spec, key, model, system, prompt, maxTokens, onText)
-                else AiClient.complete(spec, key, model, system, prompt, maxTokens)
+                val text = if (onText != null) AiClient.stream(spec, key, model, system, prompt, maxTokens, onText, parts, stopped)
+                else AiClient.complete(spec, key, model, system, prompt, maxTokens, parts = parts)
                 repo.bumpUsage(id)
-                return Answer(text, id, spec.label, model, i > 0, failures)
+                val note = switchedFrom?.let { from -> "${Providers.byId(from)?.label ?: from} tak dapat membaca lampiran ini, jadi ${spec.label} digunakan." } ?: ""
+                return Answer(text, id, spec.label, model, i > 0 || switchedFrom != null, failures, note)
             } catch (e: AiFailure) {
                 failures += e.error.message + if (e.error.detail.isNotBlank()) " [${e.error.detail}]" else ""
             } catch (e: Exception) {

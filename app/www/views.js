@@ -138,10 +138,10 @@
       field("Masa", "time", { type: "time" }),
     ], async (d) => { await A.api("notes", { method: "POST", body: { ...d, kind: "jadual" } }); A.toast("Disimpan"); route(); });
   }
-  function addBelanja() {
+  function addBelanja(amount, title) {
     sheetForm("Rekod belanja", [
-      field("Jumlah (RM)", "amount", { type: "number", step: "0.01", required: true }),
-      field("Untuk apa", "title", { required: true, placeholder: "Nasi lemak" }),
+      field("Jumlah (RM)", "amount", { type: "number", step: "0.01", required: true, value: amount ?? "" }),
+      field("Untuk apa", "title", { required: true, placeholder: "Nasi lemak", value: title ?? "" }),
     ], async (d) => { const r = await A.api("notes", { method: "POST", body: { ...d, kind: "belanja", amount: Number(d.amount) } }); A.toast(r.budget || "Disimpan"); route(); });
   }
 
@@ -622,8 +622,17 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   /* ================= CATATAN ================= */
   // Catatan (Phase 6): tabs Semua / Jadual / Belanja / Idea with a sliding glass marker; cards fall in one by one.
   const NOTE_TABS = [["semua", "Semua"], ["jadual", "Jadual"], ["belanja", "Belanja"], ["idea", "Idea"]];
-  async function notes(view, wantTab, noteId) {
+  async function notes(view, wantTab, noteId, extra) {
     Scene.setScene("sungai");
+    // "Rekod belanja RM.." from a receipt in chat (Phase 6.2): open the Belanja tab with the form filled in.
+    if (wantTab === "rekod") {
+      const amt = Number(noteId) || "";
+      let shop = "";
+      try { shop = decodeURIComponent(extra || ""); } catch { shop = extra || ""; }
+      history.replaceState(null, "", "#/catatan/belanja");
+      wantTab = "belanja"; noteId = null;
+      setTimeout(() => addBelanja(amt, shop), 300);
+    }
     if (NOTE_TABS.some(([id]) => id === wantTab)) localStorage.setItem("asbab:tab6", wantTab);
     let tab = localStorage.getItem("asbab:tab6") || "semua";
     const addBtn = h("button", { class: "ikon-btn", "aria-label": "Catatan baru", html: ICON.plus, onclick: () => sheetForm("Catatan baru", [

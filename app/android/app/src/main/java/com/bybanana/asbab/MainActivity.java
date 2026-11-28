@@ -2,6 +2,15 @@ package com.bybanana.asbab;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
+import android.webkit.WebView;
+
+import androidx.annotation.NonNull;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsAnimationCompat;
+import androidx.core.view.WindowInsetsCompat;
+
+import java.util.List;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -21,6 +30,58 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         keepRoute(getIntent());
         Notifier.INSTANCE.ensureChannels(this);
+        watchKeyboard();
+    }
+
+    /* ---------- Phase 6.2: tell the web UI exactly where the keyboard is ---------- */
+    private boolean lastOpen = false;
+    private int lastCover = -1;
+
+    /**
+     * With edge-to-edge screens the WebView is not always made shorter when the keyboard opens, so the page
+     * cannot know how much of it is hidden. This measures how far the keyboard covers the WebView (in CSS px)
+     * and passes it to window.asbabKeyboard(open, px) on every change and during the keyboard animation.
+     */
+    private void watchKeyboard() {
+        try {
+            final WebView wv = getBridge().getWebView();
+            final View root = getWindow().getDecorView();
+            root.getViewTreeObserver().addOnGlobalLayoutListener(this::reportKeyboard);
+            ViewCompat.setWindowInsetsAnimationCallback(wv, new WindowInsetsAnimationCompat.Callback(WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                @NonNull
+                @Override
+                public WindowInsetsCompat onProgress(@NonNull WindowInsetsCompat insets, @NonNull List<WindowInsetsAnimationCompat> running) {
+                    reportKeyboard();
+                    return insets;
+                }
+
+                @Override
+                public void onEnd(@NonNull WindowInsetsAnimationCompat animation) {
+                    reportKeyboard();
+                }
+            });
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void reportKeyboard() {
+        try {
+            WebView wv = getBridge().getWebView();
+            View root = getWindow().getDecorView();
+            WindowInsetsCompat ins = ViewCompat.getRootWindowInsets(root);
+            boolean open = ins != null && ins.isVisible(WindowInsetsCompat.Type.ime());
+            int imeBottom = ins == null ? 0 : ins.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+            int[] loc = new int[2];
+            wv.getLocationOnScreen(loc);
+            int wvBottom = loc[1] + wv.getHeight();
+            int cover = open ? Math.max(0, wvBottom - (root.getHeight() - imeBottom)) : 0;
+            int css = Math.round(cover / getResources().getDisplayMetrics().density);
+            if (open == lastOpen && css == lastCover) return;
+            lastOpen = open;
+            lastCover = css;
+            wv.evaluateJavascript("window.asbabKeyboard&&window.asbabKeyboard(" + open + "," + css + ")", null);
+        } catch (Exception ignored) {
+        }
     }
 
     @Override

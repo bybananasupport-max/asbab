@@ -196,4 +196,41 @@ class AiTest {
         assertEquals(listOf("gemini", "claude", "openai"), cfg.chainPrefer("chat", false, "auto", { true }, { 0 }))
         assertEquals(listOf("gemini", "claude", "openai"), cfg.chainPrefer("chat", false, null, { true }, { 0 }))
     }
+
+    /* ---------- Phase 6.2: attachments ---------- */
+
+    @Test
+    fun attachmentsGoInEachProvidersOwnShape() {
+        val img = Part("image/jpeg", "QUJD", "resit.jpg")
+        val pdf = Part("application/pdf", "UERG", "nota.pdf")
+        val g = JSONObject(GeminiSpec.generate("k", "gemini-x", "", "apa ni", 100, true, listOf(img)).body!!)
+        val gp = g.getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        assertEquals("image/jpeg", gp.getJSONObject(0).getJSONObject("inline_data").getString("mime_type"))
+        assertEquals("apa ni", gp.getJSONObject(1).getString("text"))
+
+        val c = JSONObject(ClaudeSpec.generate("k", "claude-x", "", "apa ni", 100, false, listOf(img, pdf)).body!!)
+        val cc = c.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
+        assertEquals("image", cc.getJSONObject(0).getString("type"))
+        assertEquals("document", cc.getJSONObject(1).getString("type"))
+        assertEquals("text", cc.getJSONObject(2).getString("type"))
+
+        val o = JSONObject(OpenAiSpec.generate("k", "gpt-x", "", "apa ni", 100, false, listOf(img, pdf)).body!!)
+        val oc = o.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
+        assertEquals("data:image/jpeg;base64,QUJD", oc.getJSONObject(1).getJSONObject("image_url").getString("url"))
+        assertEquals("nota.pdf", oc.getJSONObject(2).getJSONObject("file").getString("filename"))
+        // No attachments: the plain text shape stays the same as before.
+        assertEquals("hai", JSONObject(OpenAiSpec.generate("k", "gpt-x", "", "hai", 100, false).body!!).getJSONArray("messages").getJSONObject(0).getString("content"))
+    }
+
+    @Test
+    fun videoOnlyGoesToAProviderThatReadsIt() {
+        val cfg = AiConfig.from(JSONObject("{}"))
+        val video = listOf(Part("video/mp4", "AAAA"))
+        val (chain, switched) = cfg.chainFor("chat", "claude", video, { true }, { 0 })
+        assertEquals(listOf("gemini"), chain)
+        assertEquals("claude", switched)
+        val (chain2, switched2) = cfg.chainFor("chat", "openai", listOf(Part("image/png", "AAAA")), { true }, { 0 })
+        assertEquals("openai", chain2.first())
+        assertNull(switched2)
+    }
 }
