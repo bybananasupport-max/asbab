@@ -149,6 +149,14 @@
           s.ui52 = true;
           await put("settings", s);
         }
+        // Phase 7.0: add "Cara berfikir dan menjawab" once, keeping everything Amin wrote in the personality.
+        if (!s.p70) {
+          const before = s.personality;
+          s.personality = Core.withThinking(before);
+          s.p70 = true;
+          await put("settings", s);
+          if (s.personality !== before) await devlog("Perenggan \"Cara berfikir dan menjawab\" ditambah pada personaliti Asbab.");
+        }
         return {
           version, settings: s, rooms: await rooms(), projects: await projects(),
           usage: await usageToday(), ...(await (async () => { const k = await keys0(); return { ai: Ai.ready(s, k), github: !!k.github, aiKeys: Object.fromEntries(Ai.IDS.map((id) => [id, !!k[id]])) }; })()),

@@ -70,3 +70,16 @@ describe("time helpers", () => {
     expect(Core.toMin("")).toBe(0);
   });
 });
+
+describe("personality (Phase 7.0)", () => {
+  it("default personality has the thinking paragraph once", () => {
+    expect(Core.PERSONALITY.split(Core.THINKING_TITLE).length - 1).toBe(1);
+  });
+  it("adds the paragraph to Amin's own text without replacing it, and only once", () => {
+    const mine = "Nama kau Asbab. Cakap pendek-pendek.";
+    const out = Core.withThinking(mine);
+    expect(out.startsWith(mine)).toBe(true);
+    expect(out).toContain(Core.THINKING_TITLE);
+    expect(Core.withThinking(out)).toBe(out);
+  });
+});

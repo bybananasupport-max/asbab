@@ -313,3 +313,16 @@ describe("attachments (Phase 6.2)", () => {
     expect(message).toMatchObject({ stopped: true, note: expect.stringContaining("Gemini digunakan") });
   });
 });
+
+describe("personality migration (Phase 7.0)", () => {
+  it("adds the thinking paragraph once to a personality Amin changed", async () => {
+    await api("bootstrap");
+    await api("settings", { method: "PUT", body: { personality: "Personaliti aku sendiri.", p70: false } });
+    const b = await api("bootstrap");
+    expect(b.settings.personality.startsWith("Personaliti aku sendiri.")).toBe(true);
+    expect(b.settings.personality).toContain("Cara berfikir dan menjawab");
+    // Amin removes it later: it is not added back.
+    await api("settings", { method: "PUT", body: { personality: "Tanpa perenggan." } });
+    expect((await api("bootstrap")).settings.personality).toBe("Tanpa perenggan.");
+  });
+});
