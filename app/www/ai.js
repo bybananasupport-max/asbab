@@ -64,8 +64,8 @@
   }
 
   // Attachment kinds each provider reads (same as ProviderSpec.reads in Kotlin, Phase 6.2).
-  const READS = { gemini: ["image", "pdf", "video"], claude: ["image", "pdf"], openai: ["image", "pdf"] };
-  const kindOf = (mime) => (/^image\//.test(mime) ? "image" : /^video\//.test(mime) ? "video" : mime === "application/pdf" ? "pdf" : "other");
+  const READS = { gemini: ["image", "pdf", "video", "audio"], claude: ["image", "pdf"], openai: ["image", "pdf"] };
+  const kindOf = (mime) => (/^image\//.test(mime) ? "image" : /^video\//.test(mime) ? "video" : /^audio\//.test(mime) ? "audio" : mime === "application/pdf" ? "pdf" : "other");
   // Chain for a message with attachments: only providers that read every kind. switchedFrom = the provider
   // that would have answered but cannot read them (so Asbab can say which one it used instead).
   function chainFor(s, role, opts = {}, kinds = []) {

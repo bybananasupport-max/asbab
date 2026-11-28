@@ -192,10 +192,10 @@
   async function orbit(view) {
     const { projects } = await A.api("projects");
     A.boot.projects = projects;
-    const listMode = localStorage.getItem("asbab:orbitList") === "1";
+    const listMode = false; // Phase 7.1: the list is its own page (projectui.js); this page is the Medan Graviti view
     const wrap = h("div", { class: "wrap stack" },
       A.topbar("Project",
-        h("button", { class: "cip", onclick: () => { localStorage.setItem("asbab:orbitList", listMode ? "0" : "1"); route(); } }, listMode ? "Medan" : "Senarai"),
+        h("button", { class: "cip", onclick: () => { localStorage.setItem("asbab:paparMedan", "0"); route(); } }, "Senarai"),
         h("button", { class: "cip", "aria-label": "Project baru", onclick: newProject }, "+ Baru")));
     view.append(wrap);
     if (!projects.length) { wrap.append(h("div", { class: "kad" }, "Medan masih kosong. Tekan + untuk tambah project pertama kau, contohnya Milogamingstore atau AI ROOM.")); return; }
@@ -426,7 +426,8 @@
   function editProject(p) {
     sheetForm(`Butiran ${p.name}`, [
       field("Nama", "name", { value: p.name, required: true }),
-      field("Jenis", "type", { tag: "select", value: p.type, options: [["biasa", "Biasa"], ["kod", "Kod"]] }),
+      ...(p.special ? [] : [field("Jenis", "type", { tag: "select", value: p.type, options: Object.entries(Projects.TYPES).map(([id, t]) => [id, t.nama]) })]),
+      field("Ejen lalai (untuk upgrade kod)", "agent", { tag: "select", value: p.agent || "asbab", options: [["asbab", "AI dalam Asbab"], ["gemini", "Gemini (GitHub)"]] }),
       field("Repo GitHub", "repo", { value: p.repo, placeholder: "username/nama-repo" }),
       field("Branch", "branch", { value: p.branch || "main" }),
       field("Alamat website", "url", { type: "url", value: p.url }),
@@ -1427,5 +1428,6 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       h("button", { class: "btn", onclick: check }, "Semak update"), res, actions);
   }
 
-  window.Views = { today, orbit, project, notes, settings };
+  // Phase 7.1: shared with projectui.js (project pages are built there now).
+  window.Views = { today, orbit, project, notes, settings, sheetForm, field, editProject, proposeChange, showProposal, CHANGE, addBelanja, addJadual };
 })();

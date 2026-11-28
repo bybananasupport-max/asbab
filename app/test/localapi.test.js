@@ -41,7 +41,7 @@ describe("rooms and chat", () => {
     await expect(api("rooms/utama", { method: "DELETE" })).rejects.toThrow("tak boleh dipadam");
     await api(`rooms/${room.id}`, { method: "DELETE" });
     const b = await api("bootstrap");
-    expect(b.rooms.map((r) => r.id)).toEqual(["utama"]);
+    expect(b.rooms.map((r) => r.id)).toEqual(["utama", "p-asbab"]); // Asbab sendiri (Phase 7.1) has its own project chat
   });
 
   it("answers with the own brain and labels it (no AI)", async () => {
@@ -104,9 +104,9 @@ describe("projects", () => {
     expect(project.type).toBe("kod");
     expect((await api("bootstrap")).rooms.find((r) => r.id === `p-${project.id}`)).toBeTruthy();
     await api(`projects/${project.id}`, { method: "PATCH", body: { archived: true } });
-    expect((await api("projects")).projects[0].archived).toBe(true);
+    expect((await api("projects")).projects.find((p) => p.id === project.id).archived).toBe(true);
     await api(`projects/${project.id}`, { method: "DELETE" });
-    expect((await api("projects")).projects).toHaveLength(0);
+    expect((await api("projects")).projects.filter((p) => !p.special)).toHaveLength(0);
     expect((await api("bootstrap")).rooms.find((r) => r.id === `p-${project.id}`)).toBeUndefined();
   });
 
@@ -324,5 +324,55 @@ describe("personality migration (Phase 7.0)", () => {
     // Amin removes it later: it is not added back.
     await api("settings", { method: "PUT", body: { personality: "Tanpa perenggan." } });
     expect((await api("bootstrap")).settings.personality).toBe("Tanpa perenggan.");
+  });
+});
+
+describe("projects (Phase 7.1)", () => {
+  it("creates Asbab sendiri once, first in the list, and protects it", async () => {
+    await api("bootstrap");
+    const b = await api("bootstrap");
+    expect(b.projects.filter((p) => p.id === "asbab")).toHaveLength(1);
+    expect(b.projects[0]).toMatchObject({ id: "asbab", type: "kod", special: true, repo: "bybananasupport-max/asbab" });
+    await expect(api("projects/asbab", { method: "DELETE" })).rejects.toThrow("tak boleh dipadam");
+    await api("projects/asbab", { method: "PATCH", body: { archived: true, type: "biasa" } });
+    expect((await api("projects")).projects[0]).toMatchObject({ archived: false, type: "kod" });
+  });
+
+  it("new project types get their default blocks; layout changes keep known blocks only", async () => {
+    const { project } = await api("projects", { method: "POST", body: { name: "Diploma", type: "belajar" } });
+    expect(project.blocks).toEqual(["minda", "tugasan"]);
+    const r = await api(`projects/${project.id}`, { method: "PATCH", body: { blocks: ["nota", "skrin-palsu"] } });
+    expect(r.project.blocks).toEqual(["nota"]);
+  });
+
+  it("the AI can reorder blocks from the project chat", async () => {
+    const { project } = await api("projects", { method: "POST", body: { name: "EVA", type: "biasa" } });
+    const { message } = await api("chat/finish", { method: "POST", body: { roomId: `p-${project.id}`, text: 'Siap.\n<<BLOK>>["tugasan","kuiz"]', provider: "gemini" } });
+    expect(message.text).toBe("Siap.");
+    expect(message.blocks).toEqual(["tugasan", "kuiz"]);
+    expect((await api("projects")).projects.find((p) => p.id === project.id).blocks).toEqual(["tugasan", "kuiz"]);
+  });
+
+  it("Belajar: a task sent to the chat waits for Amin's confirmation, then goes to the subject", async () => {
+    const { project } = await api("projects", { method: "POST", body: { name: "Sem 1", type: "belajar" } });
+    const { item: sub } = await api(`kerja/${project.id}/subjek`, { method: "POST", body: { name: "English Skills" } });
+    const room = `p-${project.id}`;
+    const { message } = await api("chat/finish", { method: "POST", body: { roomId: room, provider: "gemini", text: 'Essay 500 patah.\n<<TUGASAN>>{"tajuk":"Essay","jenis":"Essay","tarikh":"2026-12-05","masa":"17:00","rubrik":"","subjek":"English"}' } });
+    expect(message.intake).toMatchObject({ title: "Essay", subjectId: sub.id, status: "menunggu" });
+    expect((await api(`kerja/${project.id}`)).kerja.tugasan).toHaveLength(0);
+    const r = await api(`rooms/${room}/intake`, { method: "PATCH", body: { msgId: message.id, status: "disahkan", subjectId: sub.id } });
+    expect(r.item).toMatchObject({ title: "Essay", due: "2026-12-05T17:00", subjectId: sub.id });
+    // Confirming twice does not add it twice.
+    await api(`rooms/${room}/intake`, { method: "PATCH", body: { msgId: message.id, status: "disahkan", subjectId: sub.id } });
+    expect((await api(`kerja/${project.id}`)).kerja.tugasan).toHaveLength(1);
+  });
+
+  it("deleting a subject keeps its work", async () => {
+    const { project } = await api("projects", { method: "POST", body: { name: "Sem 2", type: "belajar" } });
+    const { item: sub } = await api(`kerja/${project.id}/subjek`, { method: "POST", body: { name: "Math" } });
+    await api(`kerja/${project.id}/nota`, { method: "POST", body: { title: "Bab 1", text: "x", subjectId: sub.id } });
+    await api(`kerja/${project.id}/subjek/${sub.id}`, { method: "DELETE" });
+    const k = (await api(`kerja/${project.id}`)).kerja;
+    expect(k.nota[0].subjectId).toBeNull();
   });
 });

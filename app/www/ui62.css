@@ -442,3 +442,94 @@ body.papan-kekunci .gel { display: none; }
   .gel { animation: none; }
   .gel, .gel *, .kad-nota, .latar i { transition: none !important; animation: none !important; }
 }
+
+/* ================= Phase 7.1: Project (preview: Project, Belajar, Sembang | Kerja) ================= */
+.asbabkad { display: block; width: 100%; text-align: left; color: inherit; text-decoration: none; border-color: color-mix(in srgb, var(--aksen) 45%, transparent); margin-bottom: 4px; }
+.baris-asbab { display: flex; align-items: center; gap: 10px; }
+.logo-a { width: 38px; height: 38px; flex: none; border-radius: 12px; display: grid; place-items: center; font-weight: 700; color: var(--bg); background: linear-gradient(135deg, var(--aksen), var(--b1)); }
+.lencana { font-size: .72rem; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.lencana.hijau { background: color-mix(in srgb, var(--aksen) 16%, transparent); color: var(--aksen); }
+.lencana.kuning { background: rgba(245,197,66,.16); color: #f5c542; }
+.lencana.merah { background: rgba(240,122,114,.16); color: var(--bahaya); }
+:root.cerah .lencana.kuning { color: #9a7400; }
+.tahap { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 10px 0 4px; }
+.tahap i { height: 5px; border-radius: 4px; background: var(--garis); }
+.tahap i.siap { background: var(--aksen); }
+.tahap i.kini { background: linear-gradient(90deg, var(--aksen), transparent); animation: denyut 1.4s ease-in-out infinite; }
+@keyframes denyut { 50% { opacity: .45; } }
+.tahap.mini { margin: 8px 0 6px; }
+.titik-w { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.titik-w.hijau { background: var(--aksen); } .titik-w.merah { background: var(--bahaya); } .titik-w.kelabu { background: var(--pudar); }
+.baris .kecil-baris { display: block; font-size: .75rem; color: var(--pudar); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.baris .teks span.kecil-baris { display: block; }
+.st { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem; flex: none; }
+.st.ok { background: color-mix(in srgb, var(--aksen) 16%, transparent); color: var(--aksen); }
+.st.jalan { background: rgba(245,197,66,.16); }
+.st.gagal { background: rgba(240,122,114,.16); color: var(--bahaya); }
+.kepala-proj { display: flex; align-items: center; gap: 10px; margin: 2px 0 4px; }
+.kepala-proj h1 { margin: 0; font-size: 1.4rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kepala-proj .kecil { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Sembang | Kerja: sticky glass switch */
+.seg { position: sticky; top: calc(-14px - var(--sa-top)); z-index: 12; display: flex; margin: 12px auto 10px; width: 220px; padding: 4px; border-radius: 99px;
+  background: var(--kaca); border: 1px solid var(--garis); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+:root:not(.cerah) .seg { background: color-mix(in srgb, var(--bg) 60%, transparent); }
+.seg button { flex: 1; position: relative; z-index: 1; padding: 8px 0; font: inherit; font-size: .86rem; color: var(--pudar); border: 0; background: none; border-radius: 99px; transition: color .25s; }
+.seg button.pilih { color: var(--bg); font-weight: 600; }
+.seg-penanda { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 99px; background: var(--teks); transition: transform .35s cubic-bezier(.2,.9,.25,1.2); }
+.seg.kerja .seg-penanda { transform: translateX(100%); }
+.masuk-seg { animation: masukSeg .3s ease; }
+@keyframes masukSeg { from { opacity: 0; transform: translateY(8px); } }
+body.seg-kerja .composer, body.seg-kerja .cadangan, body.seg-kerja .ke-bawah { display: none !important; }
+body.seg-sembang main#view { padding-bottom: calc(var(--nav-ruang, 90px) + 8px + var(--composer-h, 52px) + 16px); }
+body.seg-sembang.papan-kekunci main#view { padding-bottom: calc(var(--kb, 0px) + 8px + var(--composer-h, 52px) + 16px); }
+/* blocks */
+.kepala-kerja { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.kepala-kerja .kecil { flex: 1; }
+.blok { margin-top: 14px; }
+.tajuk-blok { font-size: .8rem; font-weight: 400; color: var(--pudar); margin: 0 0 6px; }
+.isi-blok { display: grid; gap: 8px; justify-items: stretch; }
+.isi-blok > .cip { justify-self: start; }
+.alat-blok { display: flex; gap: 4px; margin-left: auto; }
+.alat-blok button { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--garis); background: var(--kad); color: var(--teks); padding: 0; }
+.alat-blok button:disabled { opacity: .3; }
+.graf-web svg { width: 100%; height: 90px; display: block; margin: 8px 0 4px; }
+.graf-web path { fill: none; stroke: var(--aksen); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.graf-web .down { fill: rgba(240,122,114,.35); }
+.status-web .baris-aksi { margin-bottom: 0; }
+.baris-aksi { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 4px; }
+.cip.kuat { background: var(--teks); color: var(--bg); border-color: var(--teks); }
+/* tasks */
+.kad.tugas { display: flex; align-items: flex-start; gap: 10px; }
+.tugas .isi-tugas { flex: 1; min-width: 0; display: grid; }
+.tugas .tanda-siap input { width: 20px; height: 20px; min-height: 0; accent-color: var(--aksen); margin: 2px 0 0; }
+.tugas.siap strong { text-decoration: line-through; opacity: .6; }
+.kira.kuning { background: rgba(245,197,66,.18); color: #f5c542; }
+.kira.merah, .kira.lepas { background: rgba(240,122,114,.2); color: var(--bahaya); }
+:root.cerah .kira.kuning { color: #9a7400; }
+.sheet .pilihan.betul { background: color-mix(in srgb, var(--aksen) 22%, transparent); }
+.sheet .pilihan.salah { background: rgba(240,122,114,.22); }
+.rakam { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0 14px; }
+.titik-rakam { width: 14px; height: 14px; border-radius: 50%; background: var(--bahaya); animation: denyut 1s ease-in-out infinite; }
+.rakam-masa { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Belajar: mind map */
+.minda { position: relative; height: min(62vh, 540px); border-radius: var(--r); border: 1px solid var(--garis); overflow: hidden; touch-action: none; cursor: grab;
+  background-image: radial-gradient(var(--garis) 1px, transparent 1px); background-size: 20px 20px; }
+.minda svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.minda svg path { fill: none; opacity: .75; }
+.minda-teras { position: absolute; transform: translate(-50%, -50%); width: 70px; height: 70px; border-radius: 50%; display: grid; place-items: center; text-align: center;
+  font-weight: 600; font-size: .78rem; line-height: 1.1; padding: 6px; color: #3b2508; background: radial-gradient(circle, #fff3cf, #f5c542 60%, #e8a35c); box-shadow: 0 0 40px 6px rgba(245,197,66,.25); pointer-events: none; z-index: 2; }
+.subjek { position: absolute; transform: translate(-50%, -50%); z-index: 3; min-width: 84px; max-width: 130px; padding: 8px 11px; border-radius: 13px; text-align: center; font-size: .78rem;
+  background: var(--kaca); color: var(--teks); touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
+  border: 2px solid transparent;
+  background: linear-gradient(color-mix(in srgb, var(--bg) 70%, transparent), color-mix(in srgb, var(--bg) 70%, transparent)) padding-box,
+    conic-gradient(var(--warna) var(--kemajuan), var(--garis) 0) border-box; }
+.subjek strong { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.subjek small { display: block; color: var(--pudar); font-size: .66rem; }
+.bulan-s { position: absolute; z-index: 2; width: 9px; height: 9px; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; background: #e9e4d3; color: #e9e4d3; box-shadow: 0 0 8px currentColor; }
+.bulan-s.kuning { background: #f5c542; color: #f5c542; }
+.bulan-s.merah, .bulan-s.lepas { background: var(--bahaya); color: var(--bahaya); }
+.tab-kecil button { font-size: .75rem; padding: 8px 0; }
+.isi-subjek { display: grid; gap: 8px; }
+.isi-subjek > .cip { justify-self: start; }
+.kad-intake { margin-top: 8px; }
+.kad-intake .seksyen-pilih { margin-bottom: 0; }

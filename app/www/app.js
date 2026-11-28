@@ -10,7 +10,7 @@ function h(tag, attrs = {}, ...kids) {
     if (k === "class") el.className = v;
     else if (k === "html") el.innerHTML = v;
     else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
-    else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+    else if (k === "style" && typeof v === "object") { for (const [sk, sv] of Object.entries(v)) { if (sk.startsWith("--")) el.style.setProperty(sk, sv); else el.style[sk] = sv; } }
     else el.setAttribute(k, v === true ? "" : v);
   }
   for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
@@ -227,14 +227,17 @@ function route() {
   closeRail();
   // Leaving the chat: no fixed chat bar, and Android's back gesture gets the left edge again.
   if (document.body.classList.contains("di-chat")) { document.body.classList.remove("di-chat"); Native.edgeSwipe(false); }
+  document.body.classList.remove("seg-kerja", "seg-sembang");
+  A.projectSeg = null;
   const view = $("#view");
   view.onscroll = null;
   view.replaceChildren();
   view.scrollTop = 0;
   A.room = null;
   if (page === "hari-ini") return Views.today(view);
-  if (page === "project" && id) return Views.project(view, id);
-  if (page === "project") return Views.orbit(view);
+  // Phase 7.1: project list (Medan Graviti stays as an optional view) and project pages.
+  if (page === "project" && id) return ProjectUI.open(view, id, sub, extra);
+  if (page === "project") return localStorage.getItem("asbab:paparMedan") === "1" ? Views.orbit(view) : ProjectUI.list(view);
   if (page === "catatan") return Views.notes(view, id, sub, extra);
   if (page === "tetapan") return Views.settings(view, id);
   return renderChat(view, id || "utama");
@@ -425,6 +428,8 @@ function msgEl(m, fresh = false) {
     m.files && m.files.length ? filesEl(m.files) : null,
     m.text ? isi : null,
     m.note ? h("div", { class: "nota-msg" }, m.note) : null,
+    m.blocks ? h("div", { class: "nota-msg" }, `Susunan Kerja: ${m.blocks.map((b) => Projects.BLOCKS[b] || b).join(", ")}`) : null,
+    m.intake && window.ProjectUI ? ProjectUI.intakeCard(m) : null,
     h("div", { class: "meta" }, ...meta.map((x) => h("span", {}, x)), m.ts ? h("span", {}, new Date(m.ts).toLocaleTimeString("ms-MY", { hour: "2-digit", minute: "2-digit" })) : null));
   if (m.links && m.links.length) {
     el.append(h("div", { class: "msg-pautan" }, ...m.links.map((l) => h("button", { class: "aksi", onclick: () => { location.hash = l.hash; } }, l.label))));

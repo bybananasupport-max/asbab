@@ -61,6 +61,15 @@ object SiteCheck {
     /** Up if the server answered below 500 (redirects and 4xx pages still mean the site is reachable). */
     fun status(httpCode: Int?): String = if (httpCode != null && httpCode in 100..499) "ok" else "down"
 
+    /** Adds one check [time, 1/0, ms, code] to the history (newest last), keeping the last [max]. */
+    fun appendHistory(raw: String?, time: Long, ok: Boolean, ms: Long, code: Int?, max: Int = 672): String {
+        val a = try { org.json.JSONArray(raw ?: "[]") } catch (e: Exception) { org.json.JSONArray() }
+        a.put(org.json.JSONArray().put(time).put(if (ok) 1 else 0).put(ms).put(code ?: 0))
+        val out = org.json.JSONArray()
+        for (i in maxOf(0, a.length() - max) until a.length()) out.put(a.get(i))
+        return out.toString()
+    }
+
     /** Message to send when the status changes, or null when nothing changed worth telling. */
     fun message(name: String, url: String, old: String?, new: String): String? = when {
         old == new -> null
