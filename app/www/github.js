@@ -75,7 +75,30 @@
       return { sha: c.sha, url: `https://github.com/${repo}/commit/${c.sha}` };
     }
 
-    return { tree, read, commit, request: gh };
+    /* ---------- Phase 7.2: branches, pull requests, builds, releases ---------- */
+    // New branch from the tip of another one (does nothing if it already exists).
+    async function branch(repo, from, name) {
+      const ref = await gh("GET", `/repos/${repo}/git/ref/heads/${encodeURIComponent(from)}`);
+      try { await gh("POST", `/repos/${repo}/git/refs`, { ref: `refs/heads/${name}`, sha: ref.object.sha }); }
+      catch (e) { if (e.status !== 422) throw e; }
+      return name;
+    }
+    const openPull = (repo, head, base, title, body) => gh("POST", `/repos/${repo}/pulls`, { head, base, title, body });
+    async function pullFor(repo, head) {
+      const owner = repo.split("/")[0];
+      const list = await gh("GET", `/repos/${repo}/pulls?state=all&head=${encodeURIComponent(`${owner}:${head}`)}`);
+      return list[0] || null;
+    }
+    const pull = (repo, n) => gh("GET", `/repos/${repo}/pulls/${n}`);
+    const merge = (repo, n, title) => gh("PUT", `/repos/${repo}/pulls/${n}/merge`, { merge_method: "squash", commit_title: title });
+    const closePull = (repo, n) => gh("PATCH", `/repos/${repo}/pulls/${n}`, { state: "closed" });
+    const comment = (repo, n, body) => gh("POST", `/repos/${repo}/issues/${n}/comments`, { body });
+    const issue = (repo, title, body, labels) => gh("POST", `/repos/${repo}/issues`, { title, body, ...(labels ? { labels } : {}) });
+    const runs = async (repo, q = "") => (await gh("GET", `/repos/${repo}/actions/runs?per_page=10${q}`)).workflow_runs || [];
+    const releases = (repo) => gh("GET", `/repos/${repo}/releases?per_page=15`);
+    const dispatch = (repo, workflow, ref, inputs) => gh("POST", `/repos/${repo}/actions/workflows/${workflow}/dispatches`, { ref, inputs });
+
+    return { tree, read, commit, branch, openPull, pullFor, pull, merge, closePull, comment, issue, runs, releases, dispatch, request: gh };
   }
 
   return { createGitHub, cleanPath, cleanRepo, b64encode, b64decode };

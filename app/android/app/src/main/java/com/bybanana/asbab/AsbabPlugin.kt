@@ -435,6 +435,88 @@ class AsbabPlugin : Plugin() {
         }
     }
 
+    /* ---------- Phase 7.2: upgrades ---------- */
+
+    @PluginMethod
+    fun notify(call: PluginCall) {
+        Notifier.showGeneral(context, call.getString("key") ?: "umum", call.getString("title") ?: "Asbab", call.getString("body") ?: "", call.getString("route") ?: "#/chat/utama")
+        call.resolve()
+    }
+
+    /**
+     * Downloads an APK from Asbab's private GitHub repo (with the token kept in Kotlin) and opens Android's
+     * install screen. The redirect to GitHub's file storage is followed without the token.
+     */
+    @PluginMethod
+    fun downloadInstall(call: PluginCall) {
+        val url = call.getString("url") ?: return call.reject("url diperlukan")
+        if (!url.startsWith("https://api.github.com/repos/bybananasupport-max/asbab/releases/assets/") && !url.startsWith("https://github.com/bybananasupport-max/asbab/releases/download/"))
+            return call.reject("Hanya APK daripada repo Asbab sendiri boleh dipasang.")
+        net.execute {
+            try {
+                val token = SecretStore.get(context, "github")
+                var target = java.net.URL(url)
+                var c: java.net.HttpURLConnection
+                var hops = 0
+                while (true) {
+                    c = (target.openConnection() as java.net.HttpURLConnection).apply {
+                        instanceFollowRedirects = false
+                        connectTimeout = 20_000; readTimeout = 60_000
+                        setRequestProperty("User-Agent", "asbab-android")
+                        if (target.host == "api.github.com") {
+                            setRequestProperty("Accept", "application/octet-stream")
+                            if (!token.isNullOrBlank()) setRequestProperty("Authorization", "Bearer $token")
+                        }
+                    }
+                    val code = c.responseCode
+                    if (code in 300..399 && hops < 5) { target = java.net.URL(c.getHeaderField("Location")); c.disconnect(); hops++; continue }
+                    if (code !in 200..299) { c.disconnect(); return@execute call.reject(if (code == 404 || code == 401 || code == 403) "GitHub menolak muat turun ($code). Semak token GitHub boleh baca repo Asbab." else "Muat turun gagal ($code).") }
+                    break
+                }
+                val dir = java.io.File(context.cacheDir, "apk").apply { mkdirs(); listFiles()?.forEach { it.delete() } }
+                val f = java.io.File(dir, "asbab-${System.currentTimeMillis()}.apk")
+                c.inputStream.use { input -> f.outputStream().use { input.copyTo(it) } }
+                c.disconnect()
+                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+                activity.runOnUiThread {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+                            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")))
+                            call.resolve(JSObject().put("ok", false).put("perluIzin", true))
+                            return@runOnUiThread
+                        }
+                        activity.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        })
+                        call.resolve(JSObject().put("ok", true))
+                    } catch (e: Exception) { call.reject("Skrin pasang tak dapat dibuka: ${e.message}") }
+                }
+            } catch (e: Throwable) {
+                call.reject("Muat turun gagal: ${e.message ?: e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    /** Crash reports saved by MainActivity's handler, newest first; and the "opened fine" signal. */
+    @PluginMethod
+    fun crashLog(call: PluginCall) {
+        val f = java.io.File(context.filesDir, "crash.log")
+        call.resolve(JSObject().put("log", if (f.exists()) f.readText().takeLast(20_000) else "").put("gagalBuka", db.get("_boot:gagal")?.toIntOrNull() ?: 0))
+    }
+
+    @PluginMethod
+    fun crashClear(call: PluginCall) {
+        java.io.File(context.filesDir, "crash.log").delete()
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun bootOk(call: PluginCall) {
+        db.put("_boot:gagal", "0")
+        call.resolve()
+    }
+
     @PluginMethod
     fun copyText(call: PluginCall) {
         val text = call.getString("text") ?: return call.reject("text diperlukan")

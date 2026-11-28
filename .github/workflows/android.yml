@@ -2,6 +2,9 @@
 # - Pull requests: run tests, build the APK and upload it as an artifact (test APK).
 # - Push to main: same, plus a GitHub Release with the APK so it can be downloaded from the phone.
 # - Manual: Actions tab > "Bina APK Asbab" > Run workflow.
+# - Phase 7.2: pull requests from Asbab's own upgrade branches (asbab/...) also publish the test APK as a
+#   pre-release, so the app can offer "Cuba versi ujian". A manual run with "ref" rebuilds an older version
+#   with a new version number (Patah balik), because Android cannot install an older version over a newer one.
 name: Bina APK Asbab
 
 on:
@@ -15,6 +18,11 @@ on:
       - "app/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Patah balik: tag versi lama untuk dibina semula (contoh v0.1.19). Kosongkan untuk binaan biasa."
+        required: false
+        default: ""
 
 concurrency:
   group: android-${{ github.ref }}
@@ -36,6 +44,8 @@ jobs:
       HAS_KEYSTORE: ${{ secrets.ASBAB_KEYSTORE_BASE64 != '' && secrets.ASBAB_KEYSTORE_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || '' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -99,6 +109,32 @@ jobs:
           path: ${{ runner.temp }}/asbab-*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish test APK (Asbab upgrade branches only)
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'asbab/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh release create "v$ASBAB_VERSION_NAME-ujian" "$RUNNER_TEMP"/asbab-*.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$HEAD_SHA" \
+            --prerelease \
+            --title "Asbab $ASBAB_VERSION_NAME (ujian)" \
+            --notes "APK ujian untuk PR #$PR_NUMBER. Bukan versi rasmi: cuba dulu, kemudian lulus atau minta pembetulan dalam Asbab."
+
+      - name: Create GitHub Release (Patah balik)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.ref != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OLD_REF: ${{ github.event.inputs.ref }}
+        run: |
+          gh release create "v$ASBAB_VERSION_NAME" "$RUNNER_TEMP"/asbab-*.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$(git rev-parse HEAD)" \
+            --title "Asbab $ASBAB_VERSION_NAME (patah balik ke $OLD_REF)" \
+            --notes "Kod versi $OLD_REF dibina semula dengan nombor versi baharu supaya boleh dipasang di atas versi sekarang."
 
       - name: Create GitHub Release (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -95,6 +95,19 @@ object Notifier {
         notify(context, id, b)
     }
 
+    /** Phase 7.2: a progress message for an upgrade request (Bekerja, Dibina, Ujian sedia, Gagal...). */
+    fun showGeneral(context: Context, key: String, title: String, body: String, route: String) {
+        ensureChannels(context)
+        val id = idFor(key)
+        notify(context, id, NotificationCompat.Builder(context, CH_REMIND)
+            .setSmallIcon(R.drawable.ic_stat_moon)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openApp(context, route, id))
+            .setAutoCancel(true))
+    }
+
     /** Spending limit warning (Phase 6.1). */
     fun showBudget(context: Context, key: String, body: String) {
         ensureChannels(context)

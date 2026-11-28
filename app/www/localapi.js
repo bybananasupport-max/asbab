@@ -6,10 +6,10 @@
 // Claude arrives in Phase 3 and GitHub in Phase 5.
 (function (root, factory) {
   const req = typeof require === "function" ? require : null;
-  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"), root.SecondBrain || req("./secondbrain.js"), root.GitHubApi || req("./github.js"), root.Ai || req("./ai.js"), root.Projects || req("./projects.js"));
+  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"), root.SecondBrain || req("./secondbrain.js"), root.GitHubApi || req("./github.js"), root.Ai || req("./ai.js"), root.Projects || req("./projects.js"), root.Upgrade || req("./upgrade.js"));
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LocalApi = api;
-})(typeof self !== "undefined" ? self : this, function (Core, Brain, SecondBrain, GitHubApi, Ai, Projects) {
+})(typeof self !== "undefined" ? self : this, function (Core, Brain, SecondBrain, GitHubApi, Ai, Projects, Upgrade) {
   const { nowMY, addDays, uid, DEFAULT_SETTINGS, SCENES, NOTE_KINDS } = Core;
   const MAIN_ROOM = "utama";
 
@@ -174,7 +174,12 @@
 
       if (a === "bootstrap" && method === "GET") {
         const last = await get("version", null);
+        let whatsNew = null;
         if (last !== version) {
+          // Phase 7.2: "Apa yang baharu" for upgrades Amin approved, shown once after the update is installed.
+          const pending = await get("baharu:pending", []);
+          if (last && pending.length) { whatsNew = { version, items: pending }; await put("baharu:pending", []); }
+          if (last) await put("versi:sebelum", last);
           await put("version", version);
           await devlog(last ? `Asbab dinaik taraf ke versi ${version}.` : `Asbab dilahirkan dalam telefon, versi ${version}.`);
         }
@@ -194,7 +199,7 @@
           if (s.personality !== before) await devlog("Perenggan \"Cara berfikir dan menjawab\" ditambah pada personaliti Asbab.");
         }
         return {
-          version, settings: s, rooms: await rooms(), projects: await projects(),
+          version, settings: s, rooms: await rooms(), projects: await projects(), whatsNew,
           usage: await usageToday(), ...(await (async () => { const k = await keys0(); return { ai: Ai.ready(s, k), github: !!k.github, aiKeys: Object.fromEntries(Ai.IDS.map((id) => [id, !!k[id]])) }; })()),
         };
       }
@@ -450,6 +455,168 @@
         }
       }
 
+      // ---------- Upgrade requests (Phase 7.2): spec -> Teruskan -> agent -> PR + test APK -> approve -> merge ----------
+      if (a === "minta" && b) {
+        const plist = await projects();
+        const p = plist.find((x) => x.id === b);
+        if (!p) throw new ApiError("Project tak wujud.", 404);
+        const key = `minta:${b}`;
+        const reqs = await get(key, []);
+        const save = () => put(key, reqs);
+        if (method === "GET" && !c) return { requests: reqs };
+        if (method === "POST" && !c) {
+          const spec = Upgrade.parseSpec(body.specRaw, body.text);
+          const r = {
+            id: uid(), projectId: b, text: String(body.text || "").slice(0, 4000), ...spec,
+            agent: p.agent === "gemini" ? "gemini" : "asbab", stage: "spesifikasi", createdAt: Date.now(),
+            tokens: Upgrade.estTokens(body.text, body.specRaw), screenshot: body.screenshot ? String(body.screenshot).slice(0, 60) : null, log: body.log ? String(body.log).slice(0, 8000) : null,
+          };
+          reqs.unshift(r);
+          await save();
+          return { request: r };
+        }
+        const r = reqs.find((x) => x.id === c);
+        if (!r) throw new ApiError("Permintaan tak wujud.", 404);
+        const repo = () => {
+          const clean = GitHubApi.cleanRepo(p.repo);
+          if (!clean) throw new ApiError("Project ni belum ada repo GitHub yang sah.");
+          return clean;
+        };
+        const needToken = async () => { if (!(await keys0()).github) throw new ApiError("Token GitHub belum disimpan. Tampal dalam Tetapan > Sambungan dan API."); };
+        const startWork = async (x) => {
+          x.stage = "bekerja"; x.startedAt = Date.now(); x.branch = Upgrade.branchName(x.id);
+          if (x.agent === "gemini") {
+            const mention = String(s.tukang?.geminiMention || "").trim();
+            const iss = await git.issue(repo(), `Asbab: ${x.title}`, Upgrade.issueBody(x, mention));
+            x.issue = { number: iss.number, url: iss.html_url };
+            x.waitingAgent = !mention;
+          }
+        };
+        if (method === "PATCH" && !d) {
+          if (Array.isArray(body.checklist)) r.checklist = r.checklist.map((it, i) => ({ ...it, done: !!(body.checklist[i] && body.checklist[i].done) }));
+          if ("tested" in body) r.tested = !!body.tested;
+          await save();
+          return { request: r };
+        }
+        if (method === "POST" && d === "teruskan") {
+          await needToken();
+          if (r.stage !== "spesifikasi") throw new ApiError("Permintaan ini dah diteruskan.");
+          if (reqs.some((x) => x !== r && ["bekerja", "dibina"].includes(x.stage))) { r.stage = "giliran"; r.queuedAt = Date.now(); }
+          else await startWork(r);
+          await save();
+          return { request: r };
+        }
+        if (method === "POST" && d === "mula") {
+          // Start the next waiting request (called when the one before it finishes).
+          const next = Upgrade.nextInQueue(reqs);
+          if (next) { await needToken(); await startWork(next); await save(); }
+          return { request: next };
+        }
+        if (method === "POST" && d === "hasil") {
+          // The in-app agent's work: files go to the request's own branch and a pull request, never to main.
+          await needToken();
+          const paths = (body.files || []).map((f) => GitHubApi.cleanPath(f.path)).filter(Boolean);
+          if (!paths.length) throw new ApiError("Tiada fail untuk diubah.");
+          const chk = Upgrade.checkFiles(paths);
+          if (!chk.ok) throw new ApiError(`Asbab tak dibenarkan mengubah: ${chk.blocked.join(", ")}.`);
+          const fileRisk = Upgrade.riskOfFiles(paths);
+          if (Upgrade.LEVELS.indexOf(fileRisk) > Upgrade.LEVELS.indexOf(r.risk)) { r.risk = fileRisk; r.checklist = Upgrade.withRiskChecks(r.checklist, fileRisk); }
+          const rp = repo();
+          r.branch = r.branch || Upgrade.branchName(r.id);
+          if (!Upgrade.safeBranch(r.branch)) throw new ApiError("Branch tak selamat.");
+          await git.branch(rp, p.branch || "main", r.branch);
+          const files = (body.files || []).filter((f) => GitHubApi.cleanPath(f.path)).map((f) => ({ path: GitHubApi.cleanPath(f.path), content: String(f.content) }));
+          const cm = await git.commit(rp, r.branch, files, `Asbab: ${String(body.summary || r.title).slice(0, 200)}`);
+          r.commits = [...(r.commits || []), cm.sha];
+          r.files = paths;
+          r.tokens = (r.tokens || 0) + Number(body.tokens || 0);
+          if (!r.pr) {
+            const pr = await git.openPull(rp, r.branch, p.branch || "main", `Asbab: ${r.title}`, `${r.spec}\n\nRisiko: **${r.risk}**\n\n${(r.checklist || []).map((x) => `- [ ] ${x.text}`).join("\n")}\n\n(Permintaan Asbab #${r.id})`);
+            r.pr = { number: pr.number, url: pr.html_url };
+          }
+          r.stage = "dibina"; r.tested = false; r.workedAt = Date.now();
+          await save();
+          return { request: r };
+        }
+        if (method === "POST" && d === "semak") {
+          // Follows the pull request and its build; a finished build publishes a test APK (a pre-release).
+          await needToken();
+          const rp = repo();
+          if (!r.pr && r.branch) {
+            const pr = await git.pullFor(rp, r.branch).catch(() => null);
+            if (pr) { r.pr = { number: pr.number, url: pr.html_url }; if (r.stage === "bekerja") r.stage = "dibina"; r.workedAt = r.workedAt || Date.now(); }
+          }
+          if (r.pr && ["dibina", "gagal", "bekerja"].includes(r.stage)) {
+            const run = (await git.runs(rp, `&branch=${encodeURIComponent(r.branch)}`))[0];
+            if (run) {
+              r.build = { id: run.id, url: run.html_url, status: run.status, conclusion: run.conclusion, number: run.run_number };
+              if (run.status === "completed" && run.conclusion === "success") {
+                const rel = (await git.releases(rp)).find((x) => x.prerelease && String(x.body || "").includes(`PR #${r.pr.number}`));
+                const apk = rel && (rel.assets || []).find((x) => /\.apk$/i.test(x.name));
+                if (apk) { r.apk = { url: apk.url, name: apk.name, version: rel.tag_name }; r.stage = "ujian"; r.builtAt = Date.now(); }
+              } else if (run.status === "completed") { r.stage = "gagal"; }
+              else r.stage = "dibina";
+            }
+          }
+          await save();
+          return { request: r };
+        }
+        if (method === "POST" && d === "lulus") {
+          const ok = Upgrade.canApprove(r);
+          if (!ok.ok) throw new ApiError(ok.why);
+          if (!r.pr) throw new ApiError("Tiada pull request untuk diluluskan.");
+          await needToken();
+          await git.merge(repo(), r.pr.number, `Asbab: ${r.title} (#${r.pr.number})`);
+          r.stage = "dipasang"; r.mergedAt = Date.now();
+          await save();
+          const pend = await get("baharu:pending", []);
+          pend.push({ title: r.title, text: r.whatsNew || r.summary || r.title, at: Date.now() });
+          await put("baharu:pending", pend.slice(-20));
+          await devlog(`${p.name}: diluluskan "${r.title}" (PR #${r.pr.number}, risiko ${r.risk})`);
+          return { request: r, next: Upgrade.nextInQueue(reqs) };
+        }
+        if (method === "POST" && d === "pembetulan") {
+          const text = String(body.text || "").trim();
+          if (!text) throw new ApiError("Tulis apa yang perlu dibetulkan.");
+          r.fixes = [...(r.fixes || []), { text: text.slice(0, 2000), at: Date.now() }];
+          r.stage = "bekerja"; r.tested = false; r.apk = null;
+          if (r.agent === "gemini") {
+            await needToken();
+            const mention = String(s.tukang?.geminiMention || "").trim();
+            const n = r.pr ? r.pr.number : r.issue ? r.issue.number : null;
+            if (n) await git.comment(repo(), n, `${mention ? mention + " " : ""}Pembetulan diminta:\n\n${text}`);
+          }
+          await save();
+          return { request: r };
+        }
+        if (method === "POST" && d === "batal") {
+          if (r.pr && r.stage !== "dipasang") { await needToken(); await git.closePull(repo(), r.pr.number).catch(() => {}); }
+          r.stage = "ditolak";
+          await save();
+          return { request: r, next: Upgrade.nextInQueue(reqs) };
+        }
+        if (method === "POST" && d === "masa") {
+          // Cost and time are recorded as the work goes (tokens are estimated from text length).
+          r.tokens = (r.tokens || 0) + Math.max(0, Number(body.tokens) || 0);
+          await save();
+          return { request: r };
+        }
+      }
+
+      // Patah balik: rebuild an older release with a new version number (Android cannot install an older one).
+      if (a === "naiktaraf" && b === "patahbalik" && method === "POST") {
+        if (!(await keys0()).github) throw new ApiError("Token GitHub belum disimpan.");
+        const tag = String(body.tag || "").trim();
+        if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new ApiError("Versi tak sah.");
+        await git.dispatch("bybananasupport-max/asbab", "android.yml", "main", { ref: tag });
+        await devlog(`Patah balik ke ${tag} dimulakan.`);
+        return { ok: true };
+      }
+      if (a === "naiktaraf" && b === "versi" && method === "GET") {
+        const rel = await git.releases("bybananasupport-max/asbab");
+        return { releases: rel.map((x) => ({ tag: x.tag_name, name: x.name, prerelease: x.prerelease, at: x.created_at, url: x.html_url, apk: ((x.assets || []).find((y) => /\.apk$/i.test(y.name)) || {}).url || "" })), previous: await get("versi:sebelum", null) };
+      }
+
       // ---------- Project work data (Phase 7.1) ----------
       if (a === "kerja" && b) {
         const p = (await projects()).find((x) => x.id === b);
@@ -525,7 +692,8 @@
           if (!GitHubApi.cleanRepo(p.repo)) throw new ApiError("Project ni belum ada repo GitHub yang sah (contoh: username/nama-repo). Tetapkan dalam Butiran.");
           return GitHubApi.cleanRepo(p.repo);
         };
-        const branch = p.branch || "main";
+        // A request's own branch may be read when fixing it (Phase 7.2); never anything outside asbab/...
+        const branch = body && Upgrade.safeBranch(body.branch) ? body.branch : p.branch || "main";
         if (c === "files" && method === "GET") return { files: await git.tree(await needRepo(), branch) };
         if (c === "read" && method === "POST") {
           const repo = await needRepo();

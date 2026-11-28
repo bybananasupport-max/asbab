@@ -113,6 +113,7 @@ Bila dia sedih: dengar dulu, jangan terus beri nasihat. Galakkan dia bercakap ju
       current: currentVersion,
       pageUrl: release.html_url || "",
       apkUrl: apk ? apk.browser_download_url : "",
+      apkApi: apk ? apk.url || "" : "", // Phase 7.2: downloaded with the token (private repo)
       apkName: apk ? apk.name : "",
       notes: String(release.body || "").slice(0, 600),
     };

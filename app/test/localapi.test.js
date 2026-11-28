@@ -376,3 +376,84 @@ describe("projects (Phase 7.1)", () => {
     expect(k.nota[0].subjectId).toBeNull();
   });
 });
+
+describe("upgrade requests (Phase 7.2)", () => {
+  const setup = () => {
+    const gh = fakeGitHub({ "app/www/app.js": "lama", "README.md": "x" });
+    const a = LocalApi.createLocalApi({ store, clock, version: "0.1.30", secrets: async () => ({ gemini: true, github: true }), githubRequest: gh.request });
+    return { gh, a };
+  };
+  const spec = '<<SPEK>>{"tajuk":"Butang kongsi","ringkas":"Tambah butang kongsi","senarai":["Tekan kongsi"],"risiko":"sederhana","baharu":"Kini boleh kongsi catatan"}';
+
+  it("spec -> Teruskan -> work on its own branch and PR -> test APK -> approve -> merge; never main", async () => {
+    const { gh, a } = setup();
+    await a("bootstrap");
+    const { request: r } = await a("minta/asbab", { method: "POST", body: { text: "Tambah butang kongsi dalam Catatan", specRaw: `Spesifikasi.\n${spec}` } });
+    expect(r).toMatchObject({ stage: "spesifikasi", risk: "sederhana", title: "Butang kongsi" });
+    await a(`minta/asbab/${r.id}/teruskan`, { method: "POST" });
+    await expect(a(`minta/asbab/${r.id}/hasil`, { method: "POST", body: { files: [{ path: "CLAUDE.md", content: "x" }] } })).rejects.toThrow("tak dibenarkan");
+    const w = (await a(`minta/asbab/${r.id}/hasil`, { method: "POST", body: { files: [{ path: "app/www/app.js", content: "baharu" }], summary: "butang" } })).request;
+    expect(w.stage).toBe("dibina");
+    expect(gh.repo.files["app/www/app.js"]).toBe("lama"); // main untouched
+    expect(gh.repo.branchFiles[w.branch]["app/www/app.js"]).toBe("baharu");
+    expect(gh.repo.pulls[0]).toMatchObject({ head: w.branch, base: "main" });
+    // The build finishes and publishes a test APK.
+    gh.repo.runs.push({ id: 9, status: "completed", conclusion: "success", html_url: "u", run_number: 31 });
+    gh.repo.releases.push({ prerelease: true, tag_name: "v0.1.31-ujian", body: "APK ujian untuk PR #1", assets: [{ name: "asbab.apk", url: "https://api.github.com/a/1" }] });
+    const t = (await a(`minta/asbab/${r.id}/semak`, { method: "POST" })).request;
+    expect(t).toMatchObject({ stage: "ujian", apk: { url: "https://api.github.com/a/1" } });
+    // Medium risk: must try the test version first.
+    await expect(a(`minta/asbab/${r.id}/lulus`, { method: "POST" })).rejects.toThrow("Cuba versi ujian");
+    await a(`minta/asbab/${r.id}`, { method: "PATCH", body: { tested: true } });
+    const done = (await a(`minta/asbab/${r.id}/lulus`, { method: "POST" })).request;
+    expect(done.stage).toBe("dipasang");
+    expect(gh.repo.merged).toEqual([1]);
+    // After the update is installed: "Apa yang baharu" once.
+    const b2 = await LocalApi.createLocalApi({ store, clock, version: "0.1.32", secrets: async () => ({ github: true }), githubRequest: gh.request })("bootstrap");
+    expect(b2.whatsNew.items[0].text).toBe("Kini boleh kongsi catatan");
+  });
+
+  it("one at a time: the second request waits in line", async () => {
+    const { a } = setup();
+    await a("bootstrap");
+    const r1 = (await a("minta/asbab", { method: "POST", body: { text: "satu", specRaw: spec } })).request;
+    const r2 = (await a("minta/asbab", { method: "POST", body: { text: "dua", specRaw: spec } })).request;
+    await a(`minta/asbab/${r1.id}/teruskan`, { method: "POST" });
+    expect((await a(`minta/asbab/${r2.id}/teruskan`, { method: "POST" })).request.stage).toBe("giliran");
+    await a(`minta/asbab/${r1.id}/batal`, { method: "POST" });
+    expect((await a("minta/asbab/x/mula", { method: "POST" }).catch(() => null))).toBeNull();
+  });
+
+  it("high risk needs every checklist item", async () => {
+    const { a, gh } = setup();
+    await a("bootstrap");
+    const r = (await a("minta/asbab", { method: "POST", body: { text: "ubah cara simpan token", specRaw: spec } })).request;
+    expect(r.risk).toBe("tinggi");
+    await a(`minta/asbab/${r.id}/teruskan`, { method: "POST" });
+    await a(`minta/asbab/${r.id}/hasil`, { method: "POST", body: { files: [{ path: "app/www/app.js", content: "x" }] } });
+    gh.repo.runs.push({ id: 9, status: "completed", conclusion: "success", html_url: "u", run_number: 31 });
+    gh.repo.releases.push({ prerelease: true, tag_name: "v0.1.31-ujian", body: "PR #1", assets: [{ name: "a.apk", url: "u" }] });
+    await a(`minta/asbab/${r.id}/semak`, { method: "POST" });
+    await a(`minta/asbab/${r.id}`, { method: "PATCH", body: { tested: true } });
+    await expect(a(`minta/asbab/${r.id}/lulus`, { method: "POST" })).rejects.toThrow("senarai semak");
+    await a(`minta/asbab/${r.id}`, { method: "PATCH", body: { checklist: r.checklist.map(() => ({ done: true })) } });
+    expect((await a(`minta/asbab/${r.id}/lulus`, { method: "POST" })).request.stage).toBe("dipasang");
+  });
+
+  it("Gemini agent: Asbab opens an issue with the full instructions", async () => {
+    const { a, gh } = setup();
+    await a("bootstrap");
+    await a("projects/asbab", { method: "PATCH", body: { agent: "gemini" } });
+    const r = (await a("minta/asbab", { method: "POST", body: { text: "satu", specRaw: spec } })).request;
+    const t = (await a(`minta/asbab/${r.id}/teruskan`, { method: "POST" })).request;
+    expect(t.issue.number).toBe(100);
+    expect(gh.repo.issues[0].body).toContain("asbab/minta-");
+  });
+
+  it("Patah balik rebuilds an older version through the build workflow", async () => {
+    const { a, gh } = setup();
+    await a("naiktaraf/patahbalik", { method: "POST", body: { tag: "v0.1.19" } });
+    expect(gh.repo.dispatches[0]).toEqual({ ref: "main", inputs: { ref: "v0.1.19" } });
+    await expect(a("naiktaraf/patahbalik", { method: "POST", body: { tag: "main; rm" } })).rejects.toThrow("tak sah");
+  });
+});

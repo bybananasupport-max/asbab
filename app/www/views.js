@@ -435,8 +435,40 @@
     ], async (d) => { await A.api(`projects/${p.id}`, { method: "PATCH", body: d }); route(); });
   }
 
+  // Phase 7.2: the code-writing part on its own, shared by the Phase 5 proposal flow and the in-app upgrade agent.
+  // branch = read files from this branch (a request's own branch when fixing). Returns {summary, risk, explain, files, ...}.
+  async function generateChange(p, task, { onStatus = () => {}, onStream = () => {}, branch } = {}) {
+    const { files } = await A.api(`projects/${p.id}/files`);
+    onStatus(`Repo ada ${files.length} fail. Memilih fail yang berkaitan…`);
+    const pick = await A.think({
+      role: "coding", maxTokens: 400,
+      system: "Kau memilih fail kod yang perlu dibaca untuk satu tugasan. Balas HANYA dengan JSON array laluan fail, maksimum 10.",
+      prompt: `Tugasan: ${task}\n\nSenarai fail:\n${files.slice(0, 800).map((f) => f.path).join("\n")}`,
+    });
+    let paths = [];
+    try { paths = JSON.parse(pick.match(/\[[\s\S]*\]/)[0]); } catch { paths = files.slice(0, 5).map((f) => f.path); }
+    onStatus(`Membaca ${paths.length} fail…`);
+    const read = await A.api(`projects/${p.id}/read`, { method: "POST", body: { paths, branch } });
+    onStatus("Menulis perubahan…");
+    const system = `Kau ialah Asbab, developer peribadi Amin untuk project "${p.name}". Amin belum boleh membaca kod, jadi penjelasan mesti dalam Bahasa Melayu yang mudah.
+Tulis perubahan yang diperlukan sahaja, dan kekalkan gaya kod sedia ada. Jangan sesekali masukkan kunci rahsia dalam kod.
+Format jawapan mesti TEPAT begini:
+RINGKASAN: satu baris apa yang berubah
+RISIKO: rendah atau sederhana atau tinggi
+PENJELASAN: 2 hingga 5 ayat mudah tentang apa yang akan berubah, kenapa, dan apa yang perlu Amin semak selepas naik
+=== FILE: laluan/fail ===
+(kandungan penuh fail baharu, tanpa markdown fence)
+=== END FILE ===
+Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fail.`;
+    const prompt = `Tugasan: ${task}\n\nFail semasa:\n${read.files.map((f) => `### ${f.path}\n${f.content}`).join("\n\n")}`;
+    const answer = await A.thinkFull({ weight: "heavy", maxTokens: 16000, system, prompt }, onStream);
+    const parsed = parseProposal(answer.text);
+    if (!parsed.files.length) throw new Error("Jawapan tak mengandungi fail dalam format yang betul. Cuba minta sekali lagi dengan lebih spesifik.");
+    return { ...parsed, provider: answer.provider, fallback: answer.fallback, tokens: Math.round((system.length + prompt.length + answer.text.length) / 4) };
+  }
+
   async function proposeChange(p, task, work) {
-    if (!A.boot.ai) { work.prepend(h("div", { class: "panel err" }, "Key Claude belum disimpan (Tetapan > Sambungan dan API), jadi Asbab belum boleh mengubah kod.")); return; }
+    if (!A.boot.ai) { work.prepend(h("div", { class: "panel err" }, "Otak kedua belum disambung (Tetapan > Sambungan dan API), jadi Asbab belum boleh mengubah kod.")); return; }
     if (!A.boot.github) { work.prepend(h("div", { class: "panel err" }, "Token GitHub belum disimpan (Tetapan > Sambungan dan API), jadi Asbab belum boleh membaca repo.")); return; }
     const box = $("#msgs");
     box?.append(h("div", { class: "msg user baru-user" }, task));
@@ -446,36 +478,8 @@
     work.replaceChildren(panel);
     p.working = true;
     try {
-      const { files } = await A.api(`projects/${p.id}/files`);
-      status.textContent = `Repo ada ${files.length} fail. Memilih fail yang berkaitan…`;
-      const pick = await A.think({
-        role: "coding", maxTokens: 400,
-        system: "Kau memilih fail kod yang perlu dibaca untuk satu tugasan. Balas HANYA dengan JSON array laluan fail, maksimum 10.",
-        prompt: `Tugasan: ${task}\n\nSenarai fail:\n${files.slice(0, 800).map((f) => f.path).join("\n")}`,
-      });
-      let paths = [];
-      try { paths = JSON.parse(pick.match(/\[[\s\S]*\]/)[0]); } catch { paths = files.slice(0, 5).map((f) => f.path); }
-      status.textContent = `Membaca ${paths.length} fail…`;
-      const read = await A.api(`projects/${p.id}/read`, { method: "POST", body: { paths } });
-      status.textContent = "Menulis cadangan perubahan…";
-      const answer = await A.thinkFull({
-        weight: "heavy", maxTokens: 16000,
-        system: `Kau ialah Asbab, developer peribadi Amin untuk project "${p.name}". Amin belum boleh membaca kod, jadi penjelasan mesti dalam Bahasa Melayu yang mudah.
-Tulis perubahan yang diperlukan sahaja, dan kekalkan gaya kod sedia ada. Jangan sesekali masukkan kunci rahsia dalam kod.
-Format jawapan mesti TEPAT begini:
-RINGKASAN: satu baris apa yang berubah
-RISIKO: rendah atau sederhana atau tinggi
-PENJELASAN: 2 hingga 5 ayat mudah tentang apa yang akan berubah, kenapa, dan apa yang perlu Amin semak selepas naik
-=== FILE: laluan/fail ===
-(kandungan penuh fail baharu, tanpa markdown fence)
-=== END FILE ===
-Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fail.`,
-        prompt: `Tugasan: ${task}\n\nFail semasa:\n${read.files.map((f) => `### ${f.path}\n${f.content}`).join("\n\n")}`,
-      }, (t) => { stream.textContent = t.slice(-3000); stream.scrollTop = 1e9; });
-      const raw = answer.text;
-      const parsed = parseProposal(raw);
-      if (!parsed.files.length) throw new Error("Cadangan tak mengandungi fail dalam format yang betul. Cuba minta sekali lagi dengan lebih spesifik.");
-      await A.api(`projects/${p.id}/proposal`, { method: "POST", body: { task, ...parsed, provider: answer.provider, fallback: answer.fallback } });
+      const parsed = await generateChange(p, task, { onStatus: (t) => { status.textContent = t; }, onStream: (t) => { stream.textContent = t.slice(-3000); stream.scrollTop = 1e9; } });
+      await A.api(`projects/${p.id}/proposal`, { method: "POST", body: { task, ...parsed } });
       p.working = false;
       await showProposal(p, work);
       const b = await A.api(`rooms/p-${p.id}`);
@@ -485,7 +489,6 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       work.replaceChildren(h("div", { class: "panel" }, h("p", { class: "err" }, e.message)));
     }
   }
-
   function parseProposal(text) {
     const line = (k) => (text.match(new RegExp(`^${k}:\\s*(.+)$`, "m")) || [])[1]?.trim() || "";
     const explain = (text.match(/^PENJELASAN:\s*([\s\S]*?)(?=^=== FILE:)/m) || [])[1]?.trim() || "";
@@ -728,6 +731,8 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       h("p", { class: "muted" }, `${n.kind} · ${n.date}${n.time ? " " + n.time : ""}${n.amount ? " · " + rm(n.amount) : ""}`),
       n.text && n.text !== n.title ? h("p", { style: { whiteSpace: "pre-wrap" } }, n.text) : null,
       h("div", { class: "row" },
+        // Phase 7.2: Bank Idea -> an upgrade request for Asbab.
+        n.kind === "idea" ? h("button", { class: "btn utama", onclick: () => { s.close(); Upgrades.newRequest(null, { text: `${n.title}${n.text && n.text !== n.title ? `: ${n.text}` : ""}` }); } }, "Jadikan permintaan") : null,
         h("button", { class: "btn", onclick: () => { s.close(); editNote(n); } }, "Edit"),
         h("button", { class: "btn bahaya", onclick: () => { s.close(); deleteNote(n, document.querySelector(`[data-note="${n.id}"]`)); } }, "Padam")));
   }
@@ -1026,7 +1031,14 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
 
       tentang: async () => {
         const { devlog } = await A.api("notes");
-        return h("div", { class: "stack" }, updatePanel(), h("div", { class: "panel" }, h("h3", {}, "Log perkembangan"),
+        const crash = await Upgrades.errorLog();
+        return h("div", { class: "stack" }, updatePanel(),
+          h("div", { class: "panel stack" }, h("h3", {}, "Laporan crash"),
+            crash ? h("pre", { class: "log-ralat" }, crash.slice(-1500)) : h("p", { class: "muted" }, "Tiada crash atau ralat direkod."),
+            crash ? h("div", { class: "row" },
+              h("button", { class: "btn utama", onclick: () => Upgrades.newRequest(null, { text: "Baiki bug ini", log: crash }) }, "Baiki bug"),
+              h("button", { class: "btn", onclick: async () => { await Native.crashClear(); localStorage.removeItem("asbab:ralat"); route(); } }, "Kosongkan")) : null),
+          h("div", { class: "panel" }, h("h3", {}, "Log perkembangan"),
           ...devlog.map((d) => h("div", { class: "note" }, h("span", { class: "jenis" }, new Date(d.ts).toLocaleDateString("ms-MY")), h("span", { class: "tajuk" }, d.text)))));
       },
     };
@@ -1246,6 +1258,14 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
         h("h3", {}, lamp, "GitHub (update, project kod, backup)"),
         input,
         h("p", { class: "muted" }, "Buat fine-grained token di github.com > Settings > Developer settings. Lihat PANDUAN.md untuk kebenaran yang perlu."),
+        // Phase 7.2: what the token needs for Asbab to upgrade itself.
+        h("details", {}, h("summary", { class: "kecil" }, "Panduan kebenaran token untuk upgrade diri"),
+          h("ol", { class: "kecil", style: { paddingLeft: "1.2em" } },
+            h("li", {}, "Buka github.com > Settings > Developer settings > Fine-grained tokens, kemudian Edit token Asbab (atau buat baharu)."),
+            h("li", {}, "Repository access: pilih repo asbab (dan repo backup)."),
+            h("li", {}, "Permissions > Repository: Contents: Read and write; Pull requests: Read and write; Issues: Read and write; Actions: Read and write; Workflows: Read and write; Metadata: Read-only."),
+            h("li", {}, "Simpan, kemudian tampal token di sini (kalau token baharu) dan tekan Uji."),
+            h("li", {}, "Actions diperlukan untuk lihat binaan dan Patah balik; Workflows diperlukan bila permintaan menyentuh fail workflow."))),
         h("div", { class: "row" },
           h("button", { class: "btn utama", onclick: async () => {
             if (!input.value.trim()) return;
@@ -1421,7 +1441,8 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
       }
       if (!u.available) { res.textContent = `Asbab dah versi terkini (${u.current}).`; return; }
       res.textContent = `Versi baharu ${u.latest} ada (kau guna ${u.current}).`;
-      actions.append(h("button", { class: "btn utama", onclick: () => Native.openUrl(u.apkUrl || u.pageUrl) }, "Muat turun update"));
+      // Phase 7.2: backup to the backup repo first, then Android's install screen.
+      actions.append(h("button", { class: "btn utama", onclick: () => (u.apkApi ? Upgrades.installWithBackup(u.apkApi, `Pasang ${u.latest}`) : Native.openUrl(u.apkUrl || u.pageUrl)) }, "Pasang kemas kini"));
     };
     return h("div", { class: "panel stack" },
       h("h3", {}, `Asbab versi ${A.boot.version}`),
@@ -1429,5 +1450,5 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   }
 
   // Phase 7.1: shared with projectui.js (project pages are built there now).
-  window.Views = { today, orbit, project, notes, settings, sheetForm, field, editProject, proposeChange, showProposal, CHANGE, addBelanja, addJadual };
+  window.Views = { today, orbit, project, notes, settings, sheetForm, field, editProject, proposeChange, generateChange, showProposal, CHANGE, addBelanja, addJadual };
 })();
