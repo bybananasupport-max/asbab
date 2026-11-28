@@ -457,3 +457,50 @@ describe("upgrade requests (Phase 7.2)", () => {
     await expect(a("naiktaraf/patahbalik", { method: "POST", body: { tag: "main; rm" } })).rejects.toThrow("tak sah");
   });
 });
+
+describe("main chat reads Asbab (Phase 7.3)", () => {
+  it("only read-only tools run; others are refused", async () => {
+    await api("notes", { method: "POST", body: { kind: "belanja", title: "Nasi lemak", amount: 6, date: "2026-11-25" } });
+    await api("notes", { method: "POST", body: { kind: "belanja", title: "Teh tarik", amount: 2.5, date: "2026-11-25" } });
+    const r = await api("alat", { method: "POST", body: { alat: "belanja", args: { dari: "2026-11-01" } } });
+    expect(r.hasil).toMatchObject({ jumlah: 8.5, ikutKategori: { Makanan: 6, Minuman: 2.5 } });
+    await expect(api("alat", { method: "POST", body: { alat: "padam_catatan", args: {} } })).rejects.toThrow("hanya boleh membaca");
+    expect((await api("notes")).notes).toHaveLength(2);
+  });
+
+  it("main chat asks the second brain with tools; project chats do not get them", async () => {
+    const a = LocalApi.createLocalApi({ store, version: "0.1.3", clock, secrets: async () => ({ gemini: true }) });
+    const d = await a("chat", { method: "POST", body: { roomId: "utama", text: "terangkan teori relativiti" } });
+    expect(d.tools).toBe(true);
+    expect(d.context.system).toContain("<<ALAT>>");
+    const { project } = await a("projects", { method: "POST", body: { name: "EVA" } });
+    const d2 = await a("chat", { method: "POST", body: { roomId: `p-${project.id}`, text: "terangkan teori relativiti" } });
+    expect(d2.tools).toBe(false);
+  });
+
+  it("a personal record saved from chat can be undone with Batal", async () => {
+    const d = await api("chat", { method: "POST", body: { roomId: "utama", text: "belanja RM12.50 nasi lemak" } });
+    expect(d.messages[0].savedIds).toHaveLength(1);
+    const r = await api("batal-simpan", { method: "POST", body: { roomId: "utama", msgId: d.messages[0].id } });
+    expect(r.message.batal).toBe(true);
+    expect((await api("notes")).notes).toHaveLength(0);
+  });
+
+  it("charts and hand-off are kept on the answer", async () => {
+    await api("bootstrap");
+    const { project } = await api("projects", { method: "POST", body: { name: "Milogamingstore", type: "website" } });
+    const { message } = await api("chat/finish", { method: "POST", body: { roomId: "utama", provider: "gemini", steps: [{ label: "🔍 Menyemak website", ringkas: "hidup" }],
+      text: 'Ini analisis.\n<<GRAF>>{"jenis":"bar","label":["a","b"],"nilai":[1,2]}\n<<HANTAR>>{"project":"Milogamingstore","ringkasan":"Tambah butang WhatsApp"}' } });
+    expect(message.text).toBe("Ini analisis.");
+    expect(message.charts[0].nilai).toEqual([1, 2]);
+    expect(message.handoff).toEqual({ projectId: project.id, name: "Milogamingstore", ringkasan: "Tambah butang WhatsApp" });
+    expect(message.steps[0].ringkas).toBe("hidup");
+  });
+
+  it("search data covers chats, notes and project work", async () => {
+    await api("chat", { method: "POST", body: { roomId: "utama", text: "nota: jumpa client Milo" } });
+    const { data } = await api("cari");
+    expect(data.messages.some((m) => m.text.includes("Milo"))).toBe(true);
+    expect(data.notes.length).toBeGreaterThan(0);
+  });
+});

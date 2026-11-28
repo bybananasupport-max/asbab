@@ -435,6 +435,16 @@ class AsbabPlugin : Plugin() {
         }
     }
 
+    /* ---------- Phase 7.3: website check for the main chat (read only, from outside like a visitor) ---------- */
+    @PluginMethod
+    fun siteAudit(call: PluginCall) {
+        val url = call.getString("url")?.trim().orEmpty()
+        if (!url.startsWith("http://") && !url.startsWith("https://")) return call.reject("Alamat website tak sah.")
+        net.execute {
+            try { call.resolve(SiteAudit.run(url)) } catch (e: Throwable) { call.resolve(JSObject().put("ok", false).put("ralat", e.message ?: e.javaClass.simpleName)) }
+        }
+    }
+
     /* ---------- Phase 7.2: upgrades ---------- */
 
     @PluginMethod

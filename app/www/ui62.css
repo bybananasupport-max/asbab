@@ -551,3 +551,34 @@ body.seg-sembang.papan-kekunci main#view { padding-bottom: calc(var(--kb, 0px) +
 .log-ralat { max-height: 180px; overflow: auto; font-size: .7rem; white-space: pre-wrap; background: var(--kad); border: 1px solid var(--garis); border-radius: 10px; padding: 8px; }
 .pra-shot { max-width: 100%; max-height: 220px; border-radius: 10px; border: 1px solid var(--garis); margin-top: 6px; }
 .kanvas-bulat { width: 100%; height: auto; border-radius: 10px; touch-action: none; border: 1px solid var(--garis); }
+
+/* ================= Phase 7.3: tools, charts, Belanja page, search, sheets ================= */
+.langkah-list { display: grid; gap: 4px; margin-bottom: 6px; }
+.langkah-alat { font-size: .78rem; color: var(--pudar); padding: 5px 10px; border-radius: 10px; background: var(--kad); border: 1px solid var(--garis); justify-self: start; }
+.langkah-alat.jalan { color: var(--aksen); animation: denyut 1.2s ease-in-out infinite; }
+.msgs > .langkah-alat { align-self: flex-start; }
+.aksi.kuat { background: var(--aksen); color: var(--bg); }
+.aksi.lembut { border-color: var(--garis); color: var(--pudar); }
+.graf-ai { margin-top: 8px; display: grid; gap: 6px; }
+.graf-ai svg { width: 100%; height: auto; max-height: 220px; display: block; }
+.graf-ai .batang, .graf-belanja rect { fill: var(--aksen); opacity: .85; }
+.graf-belanja rect.hari-ini { fill: var(--b1); opacity: 1; }
+.graf-ai .garis { fill: none; stroke: var(--aksen); stroke-width: 2; }
+.graf-ai .titik { fill: var(--aksen); }
+.graf-ai .lbl, .graf-belanja text { fill: var(--pudar); font-size: 9px; }
+.graf-belanja svg { width: 100%; height: 130px; display: block; }
+.pilih-bulan { width: auto; min-height: 0; padding: 5px 10px; border-radius: 99px; font-size: .8rem; }
+.bar-kategori { display: block; height: 4px; border-radius: 2px; margin-top: 5px; background: linear-gradient(90deg, var(--aksen) var(--lebar), var(--garis) 0); }
+.baris .teks span.bar-kategori { display: block; }
+.sheet-latar { position: fixed; inset: 0; z-index: 59; background: rgba(0,0,0,.4); opacity: 0; transition: opacity .25s; }
+.sheet-latar.buka { opacity: 1; }
+.cari-sejagat { position: fixed; inset: 0; z-index: 70; padding: calc(12px + var(--sa-top)) 16px 24px; overflow-y: auto;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  opacity: 0; transform: translateY(-12px); transition: opacity .25s, transform .25s; }
+.cari-sejagat.buka { opacity: 1; transform: none; }
+.cari-atas { display: flex; gap: 8px; align-items: center; max-width: 430px; margin: 0 auto 10px; }
+.cari-atas input { flex: 1; min-height: 44px; border-radius: 14px; }
+.hasil-cari { max-width: 430px; margin: 0 auto; }
+.tarik-cari { position: fixed; top: calc(10px + var(--sa-top)); left: 50%; transform: translateX(-50%); z-index: 80; padding: 7px 14px; border-radius: 99px;
+  background: var(--kaca); border: 1px solid var(--garis); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); font-size: .82rem; color: var(--pudar); pointer-events: none; }
+.tarik-cari.sedia { color: var(--teks); border-color: var(--aksen); }
