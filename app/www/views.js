@@ -155,7 +155,8 @@
       h("span", { class: "label" }, label), h("span", { class: "nilai" }, nilai), extra ? h("span", { class: "label" }, extra) : null,
       frac != null ? h("span", { class: "bar" }, h("i", { style: { width: Math.min(100, frac * 100) + "%", background: frac >= 1 ? "#ff8787" : "" } })) : null);
     return h("div", { class: "grid2" },
-      card("Belanja hari ini", rm(t.belanjaTotal), had ? `had ${rm(had)}` : null, addBelanja, had ? t.belanjaTotal / had : null),
+      // Phase 7.3: opens the full Belanja page (chart, filters, categories).
+      card("Belanja hari ini", rm(t.belanjaTotal), had ? `had ${rm(had)}` : null, () => (location.hash = "#/belanja"), had ? t.belanjaTotal / had : null),
       card("Otak kedua", cap ? `${used} / ${cap}` : `${used}`, cap ? null : "belum disambung", () => (location.hash = "#/tetapan/sambungan"), cap ? used / cap : null),
       card("Website", sites.length ? (down ? `${down} down` : "Semua ok") : "–", sites.length ? null : "Tambah dalam project", () => (location.hash = "#/project")),
       card("Solat hari ini", `${WAKTU.filter(([k]) => t.solat[k]).length} / 5`, null, () => $("#cincin-solat")?.scrollIntoView({ behavior: "smooth", block: "center" })));
@@ -1450,5 +1451,5 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   }
 
   // Phase 7.1: shared with projectui.js (project pages are built there now).
-  window.Views = { today, orbit, project, notes, settings, sheetForm, field, editProject, proposeChange, generateChange, showProposal, CHANGE, addBelanja, addJadual };
+  window.Views = { today, orbit, project, notes, settings, sheetForm, field, editProject, proposeChange, generateChange, showProposal, CHANGE, addBelanja, addJadual, editNote, deleteNote, CATS };
 })();

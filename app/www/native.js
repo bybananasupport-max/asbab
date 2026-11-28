@@ -239,7 +239,16 @@
   const crashClear = () => Asbab?.crashClear();
   const bootOk = () => Asbab?.bootOk().catch(() => {});
 
+  // Phase 7.3: a website as a visitor sees it (status, time, SSL, broken links). Browser: status only.
+  async function siteAudit(url) {
+    if (Asbab) return Asbab.siteAudit({ url });
+    const t0 = Date.now();
+    try { const r = await fetch(url, { mode: "no-cors" }); return { url, ok: true, status: r.status || 200, ms: Date.now() - t0, pautanRosak: [] }; }
+    catch { return { url, ok: false, ralat: "Tak dapat dihubungi", ms: Date.now() - t0 }; }
+  }
+
   window.Native = {
+    siteAudit,
     notify, downloadInstall, crashLog, crashClear, bootOk,
     aiStop, attachPut, attachGet, ocr, copyText, shareText, edgeSwipe,
     pickAudio, soundTest, soundStop, widgetUpdate,
