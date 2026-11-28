@@ -238,8 +238,8 @@ object Overlay {
                     contentDescription = "Project $name"; setOnClickListener { go(app, "#/project/$pid") }
                 }
             }
-            "cincin" -> listOf(RingView(app, repo.usageToday(), s.aiDailyCap).apply {
-                layoutParams = lp(big); contentDescription = "Otak kedua: ${repo.usageToday()} daripada ${s.aiDailyCap} hari ini"
+            "cincin" -> listOf(RingView(app, repo.usageToday(), AiRouter.config(app).totalCap { AiRouter.hasKey(app, it) }).apply {
+                layoutParams = lp(big); contentDescription = "Otak kedua: ${repo.usageToday()} permintaan hari ini"
                 setOnClickListener { go(app, "#/tetapan/otak") }
             })
             "kamera" -> listOf(icon("kamera", "Kamera") { closeRail(); start(app, Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)) })

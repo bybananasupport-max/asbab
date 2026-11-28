@@ -86,20 +86,17 @@ object Scheduler {
     /** Evening check-in written by the light model (within the daily cap); null = use the fixed question. */
     private fun aiCheckin(context: Context, repo: Repo, e: Event): String? {
         val s = repo.settings()
-        if (!s.aiEnabled || repo.usageToday() >= s.aiDailyCap) return null
-        val key = SecretStore.get(context, SecretStore.CLAUDE) ?: return null
+        if (!s.aiEnabled) return null
         val jadual = repo.notes().filter { it.kind == "jadual" && it.date == e.date }.joinToString(", ") { it.title }.ifBlank { "tiada" }
-        return try {
-            val text = Claude.complete(
-                key, s.modelLight, repo.db.get("settings")?.let { org.json.JSONObject(it).optString("personality") }?.ifBlank { null } ?: "Kau Asbab, pembantu peribadi Amin.",
-                "Tulis satu mesej check-in petang yang ringkas (maksimum 2 ayat) kepada ${s.name}. Tanya tentang harinya supaya dia bercerita. " +
-                    "Hari ini ${Planner.hari(e.date)}. Jadual hari ini: $jadual. Jangan guna senarai.",
-                200,
-            ).trim()
-            if (text.isBlank()) null else { repo.bumpUsage(); text }
-        } catch (x: Exception) {
-            null
-        }
+        val personality = repo.db.get("settings")?.let { try { org.json.JSONObject(it).optString("personality") } catch (x: Exception) { "" } }?.ifBlank { null }
+            ?: "Kau Asbab, pembantu peribadi Amin."
+        val text = AiRouter.tryComplete(
+            context, "chat", personal = false, system = personality,
+            prompt = "Tulis satu mesej check-in petang yang ringkas (maksimum 2 ayat) kepada ${s.name}. Tanya tentang harinya supaya dia bercerita. " +
+                "Hari ini ${Planner.hari(e.date)}. Jadual hari ini: $jadual. Jangan guna senarai.",
+            maxTokens = 200,
+        )?.text?.trim()
+        return text?.ifBlank { null }
     }
 
     private fun deliver(context: Context, repo: Repo, e: Event, body: String) {

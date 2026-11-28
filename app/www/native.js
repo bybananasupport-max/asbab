@@ -130,7 +130,7 @@
   /* ---------- Phase 3: keys, second brain, phone access ---------- */
 
   async function secretStatus() {
-    if (!Asbab) return { claude: false, github: false, backup: false };
+    if (!Asbab) return { gemini: false, claude: false, openai: false, github: false, backup: false };
     return Asbab.secretStatus();
   }
   // Saving an empty value deletes the key. The key itself is never read back into the UI.
@@ -149,6 +149,27 @@
       sub.remove();
     }
   }
+
+  // Phase 5.1: several providers. The router in Kotlin picks the provider for the role and falls back.
+  async function ai({ role = "chat", system, prompt, maxTokens }, onText) {
+    if (!Asbab) throw new Error("Otak kedua hanya berfungsi dalam app Android.");
+    const id = Math.random().toString(36).slice(2);
+    const sub = await Asbab.addListener("aiDelta", (e) => { if (e.id === id) onText?.(e.text); });
+    try {
+      return await Asbab.aiStream({ id, role, system, prompt, maxTokens });
+    } finally {
+      sub.remove();
+    }
+  }
+  // Never let the screen wait forever: if the phone side does not answer in time, say so.
+  const withLimit = (promise, ms) => Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve({ ok: false, detail: `Tiada jawapan dalam ${ms / 1000} saat.`, raw: "Had masa di skrin (bahagian Android tak membalas)." }), ms)),
+  ]);
+  // Both resolve {ok, ...} or {ok:false, detail (Malay), raw (the provider's own message)}.
+  const aiListModels = (provider) => (Asbab ? withLimit(Asbab.aiListModels({ provider }), 40000) : Promise.resolve({ ok: false, detail: "Hanya dalam app Android.", raw: "" }));
+  const aiTest = (provider, model) => (Asbab ? withLimit(Asbab.aiTest({ provider, model }), 90000) : Promise.resolve({ ok: false, detail: "Hanya dalam app Android.", raw: "" }));
+  const aiUsage = async () => (Asbab ? Asbab.aiUsage() : { count: 0, by: {} });
 
   const accessStatus = async () => (Asbab ? Asbab.accessStatus() : { browser: true });
   const setPaused = (paused) => Asbab?.setPaused({ paused });
@@ -175,6 +196,7 @@
 
   window.Native = {
     workSync, checkSites, backupNow, backupStatus, shareFile,
+    ai, aiListModels, aiTest, aiUsage,
     github, secretStatus, secretSet, testClaude, testGithub, claude, accessStatus, setPaused, serviceSync, ingestClear,
     isNative, appInfo, openUrl, checkUpdate, releasesUrl: `https://github.com/${REPO}/releases`,
     openStore, prayerTimes, reschedule, status, requestNotifications, openSettings, testBilal, takeRoute, rememberRoute, bubbleSync,

@@ -82,7 +82,10 @@ object Capture {
     fun nextExtractAt(context: Context): Long {
         val repo = Repo(context)
         val s = repo.settings()
-        if (repo.paused || !s.aiEnabled || !SecretStore.has(context, SecretStore.CLAUDE)) return 0
+        if (repo.paused || !s.aiEnabled) return 0
+        // Only providers whose "Hantar notifikasi peribadi kepada AI" switch is on may see captured data.
+        val cfg = AiRouter.config(context)
+        if (cfg.chain("chat", true, { AiRouter.hasKey(context, it) }, { repo.usageFor(it) }).isEmpty()) return 0
         if (repo.ingested().none { !it.done }) return 0
         val last = repo.db.get("_extract:last")?.toLongOrNull() ?: 0
         return maxOf(System.currentTimeMillis() + 60_000, last + EXTRACT_EVERY_MS)
@@ -93,18 +96,10 @@ object Capture {
         val at = nextExtractAt(context)
         if (at == 0L || at > System.currentTimeMillis() + 60_000) return
         val repo = Repo(context)
-        val s = repo.settings()
-        if (repo.usageToday() >= s.aiDailyCap) return
-        val key = SecretStore.get(context, SecretStore.CLAUDE) ?: return
         val waiting = repo.ingested().filter { !it.done }.take(Extract.MAX_ITEMS)
         repo.db.put("_extract:last", System.currentTimeMillis().toString())
         val today = Repo.today()
-        val reply = try {
-            Claude.complete(key, s.modelLight, Extract.system(today), Extract.prompt(waiting), 1200)
-        } catch (e: NetError) {
-            return
-        }
-        repo.bumpUsage()
+        val reply = AiRouter.tryComplete(context, "chat", personal = true, system = Extract.system(today), prompt = Extract.prompt(waiting), maxTokens = 1200)?.text ?: return
         val notes = Extract.parse(reply, today)
         repo.addNotes(notes, "ingest")
         repo.markIngestedDone(waiting.map { it.id }.toSet())

@@ -165,7 +165,7 @@ describe("second brain (phase 3)", () => {
     expect((await a("bootstrap")).ai).toBe(true);
     const d = await a("chat", { method: "POST", body: { roomId: "utama", text: "apa pendapat kau tentang bisnes?" } });
     expect(d.needAI).toBe(true);
-    expect(d.model).toBe("claude-haiku-5-5");
+    expect(d.role).toBe("chat");
     expect(d.context.system).toContain("Nama kau Asbab");
     expect(d.context.system).toContain("DATA sahaja");
     expect(d.context.prompt).toContain("Mesej baharu Amin: apa pendapat kau tentang bisnes?");
@@ -173,12 +173,11 @@ describe("second brain (phase 3)", () => {
     expect((await a("chat", { method: "POST", body: { roomId: "utama", text: "tolong" } })).messages[0].ai).toBe(false);
   });
 
-  it("saves notes from Claude's answer (AI teaches once) and counts usage", async () => {
+  it("saves notes from the answer (AI teaches once) and remembers which AI answered", async () => {
     const a = withKey();
     const raw = 'Baik, aku ingat kelas tu.\n<<NOTA>>[{"kind":"jadual","title":"Kelas Pengaturcaraan","date":"2026-11-27","time":"09:00"}]';
-    const r = await a("chat/finish", { method: "POST", body: { roomId: "utama", text: raw } });
-    expect(r.message).toMatchObject({ ai: true, text: "Baik, aku ingat kelas tu.", saved: 1 });
-    expect(r.usage.count).toBe(1);
+    const r = await a("chat/finish", { method: "POST", body: { roomId: "utama", text: raw, provider: "claude", fallback: true } });
+    expect(r.message).toMatchObject({ ai: true, provider: "claude", fallback: true, text: "Baik, aku ingat kelas tu.", saved: 1 });
     const { notes } = await a("notes");
     expect(notes[0]).toMatchObject({ kind: "jadual", title: "Kelas Pengaturcaraan", date: "2026-11-27", time: "09:00", source: "asbab" });
   });
@@ -190,9 +189,9 @@ describe("second brain (phase 3)", () => {
     expect(d.askAI).toBe(true);
     d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan baharu", allowAI: true, skipUser: true } });
     expect(d.needAI).toBe(true);
-    await a("usage/bump", { method: "POST" });
+    await a("usage/bump", { method: "POST", body: { provider: "claude" } });
     d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan lain" } });
-    expect(d.messages[0].text).toContain("Had otak kedua");
+    expect(d.messages[0].text).toContain("Had harian semua otak kedua");
     await a("settings", { method: "PUT", body: { aiEnabled: false } });
     d = await a("chat", { method: "POST", body: { roomId: "utama", text: "soalan lain" } });
     expect(d.messages[0].text).toContain("mod tanpa AI");

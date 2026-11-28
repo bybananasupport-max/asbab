@@ -109,7 +109,7 @@
     const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return isoDay(d); });
     const belanja7 = days.map((d) => all.filter((n) => n.kind === "belanja" && n.date === d).reduce((a, n) => a + (n.amount || 0), 0));
     const next = t.jadual.find((j) => !j.time || toMin(j.time) >= nowMin());
-    const used = A.boot.usage.count, cap = A.boot.settings.aiDailyCap;
+    const used = A.boot.usage.count, cap = Ai.totalCap(A.boot.settings, A.boot.aiKeys || {});
     const sites = A.boot.projects.filter((p) => p.url && !p.archived);
     const down = sites.filter((p) => p.status === "down").length;
     const card = (label, nilai, extra, onclick, html) => h("button", { class: "gcard", style: { textAlign: "left", color: "inherit" }, onclick },
@@ -379,7 +379,7 @@
       const { files } = await A.api(`projects/${p.id}/files`);
       status.textContent = `Repo ada ${files.length} fail. Memilih fail yang berkaitan…`;
       const pick = await A.think({
-        weight: "light", maxTokens: 400,
+        role: "coding", maxTokens: 400,
         system: "Kau memilih fail kod yang perlu dibaca untuk satu tugasan. Balas HANYA dengan JSON array laluan fail, maksimum 10.",
         prompt: `Tugasan: ${task}\n\nSenarai fail:\n${files.slice(0, 800).map((f) => f.path).join("\n")}`,
       });
@@ -388,7 +388,7 @@
       status.textContent = `Membaca ${paths.length} fail…`;
       const read = await A.api(`projects/${p.id}/read`, { method: "POST", body: { paths } });
       status.textContent = "Menulis cadangan perubahan…";
-      const raw = await A.think({
+      const answer = await A.thinkFull({
         weight: "heavy", maxTokens: 16000,
         system: `Kau ialah Asbab, developer peribadi Amin untuk project "${p.name}". Amin belum boleh membaca kod, jadi penjelasan mesti dalam Bahasa Melayu yang mudah.
 Tulis perubahan yang diperlukan sahaja, dan kekalkan gaya kod sedia ada. Jangan sesekali masukkan kunci rahsia dalam kod.
@@ -402,9 +402,10 @@ PENJELASAN: 2 hingga 5 ayat mudah tentang apa yang akan berubah, kenapa, dan apa
 Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fail.`,
         prompt: `Tugasan: ${task}\n\nFail semasa:\n${read.files.map((f) => `### ${f.path}\n${f.content}`).join("\n\n")}`,
       }, (t) => { stream.textContent = t.slice(-3000); stream.scrollTop = 1e9; });
+      const raw = answer.text;
       const parsed = parseProposal(raw);
       if (!parsed.files.length) throw new Error("Cadangan tak mengandungi fail dalam format yang betul. Cuba minta sekali lagi dengan lebih spesifik.");
-      await A.api(`projects/${p.id}/proposal`, { method: "POST", body: { task, ...parsed } });
+      await A.api(`projects/${p.id}/proposal`, { method: "POST", body: { task, ...parsed, provider: answer.provider, fallback: answer.fallback } });
       p.working = false;
       await showProposal(p, work);
       const b = await A.api(`rooms/p-${p.id}`);
@@ -654,7 +655,7 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   const CATS = [
     ["profil", "👤", "Profil", "nama zon solat lokasi cuaca"],
     ["tema", "🖼️", "Wallpaper & Tema", "wallpaper gambar blur kaca gelap cerah warna aksen animasi bunyi"],
-    ["sambungan", "🔌", "Sambungan & API", "api key claude github token sandbox uji"],
+    ["sambungan", "🔌", "Sambungan & API", "api key gemini claude openai model github token sandaran uji"],
     ["otak", "🧠", "Otak Kedua", "ai claude had izin penggunaan model"],
     ["suara", "🔔", "Bila Asbab Bersuara", "bilal solat taklimat pagi check-in petang waktu senyap keutamaan"],
     ["personaliti", "💬", "Personaliti", "personaliti cara bercakap nilai"],
@@ -670,8 +671,8 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
     return {
       profil: `${s.name} · zon ${s.zone}`,
       tema: `${tm.asing ? "Wallpaper ikut bahagian" : (tm.wall.semua?.jenis === "gambar" ? "Gambar sendiri" : "Alam hidup")} · blur ${tm.blur}`,
-      sambungan: `Claude ${A.boot.ai ? "bersambung" : "belum"} · GitHub ${A.boot.github ? "bersambung" : "belum"}`,
-      otak: s.aiEnabled ? `Hidup · ${A.boot.usage.count}/${s.aiDailyCap} hari ini` : "Dimatikan (mod tanpa AI)",
+      sambungan: `Chat: ${Ai.byId(Ai.config(s).roles.chat).label} · ${Ai.IDS.filter((id) => (A.boot.aiKeys || {})[id]).length} AI ada key · GitHub ${A.boot.github ? "ada" : "belum"}`,
+      otak: s.aiEnabled ? `Hidup · ${A.boot.usage.count} permintaan hari ini` : "Dimatikan (mod tanpa AI)",
       suara: `Mod Bilal ${s.bilalLead} minit · taklimat ${s.briefTime} · senyap ${s.quietFrom}-${s.quietTo}`,
       personaliti: s.personality.slice(0, 60) + "…",
       akses: `${["whatsapp", "email", "sms_bank", "skrin", "penggunaan_app"].filter((k) => s.access[k]).length} daripada 5 suis hidup`,
@@ -730,17 +731,12 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
 
       sambungan: () => sambunganPage(),
 
-      otak: () => formOf([
-        sw("aiEnabled", "Guna otak kedua", s.aiEnabled, "Bila dimatikan, Asbab hanya jawab dari catatan sendiri."),
-        sw("askBeforeAI", "Minta izin sebelum guna Claude", s.askBeforeAI),
-        field("Had penggunaan sehari", "aiDailyCap", { type: "number", value: s.aiDailyCap }),
-        field("Model ringan (kerja harian)", "modelLight", { value: s.modelLight }),
-        field("Model berat (coding)", "modelHeavy", { value: s.modelHeavy }),
-        h("p", { class: "muted" }, `Digunakan hari ini: ${A.boot.usage.count} kali. Tukar nama model kalau keluar ralat "model not found".`),
-      ], (f) => ({
-        aiEnabled: f.get("aiEnabled") === "on", askBeforeAI: f.get("askBeforeAI") === "on", aiDailyCap: Number(f.get("aiDailyCap")),
-        modelLight: String(f.get("modelLight") || "").trim() || s.modelLight, modelHeavy: String(f.get("modelHeavy") || "").trim() || s.modelHeavy,
-      })),
+      otak: () => h("div", { class: "stack" }, formOf([
+        sw("aiEnabled", "Guna otak kedua", s.aiEnabled, "Bila dimatikan, Asbab hanya jawab dari catatan sendiri (mod tanpa AI)."),
+        sw("askBeforeAI", "Minta izin sebelum guna otak kedua", s.askBeforeAI),
+        h("p", { class: "muted" }, "Penyedia (Gemini, Claude, OpenAI), model, had harian setiap penyedia, peranan Chat/Coding dan susunan sandaran diatur dalam Tetapan > Sambungan & API."),
+      ], (f) => ({ aiEnabled: f.get("aiEnabled") === "on", askBeforeAI: f.get("askBeforeAI") === "on" })),
+        h("a", { class: "btn", href: "#/tetapan/sambungan" }, "Buka Sambungan & API")),
 
       suara: () => h("div", { class: "stack" }, reminderStatus(), formOf([
         field("Mod Bilal: ingatkan berapa minit sebelum waktu", "bilalLead", { type: "number", value: s.bilalLead }),
@@ -826,191 +822,152 @@ Ulang blok FILE untuk setiap fail yang berubah. Tulis kandungan PENUH setiap fai
   /* ---------- Sambungan & API (Phase 3) ---------- */
   function sambunganPage() {
     const box = h("div", { class: "stack" });
-    const SVC = [
-      ["claude", "Claude (otak kedua)", "Key API Claude (bermula dengan sk-ant-)", "Dapatkan key di console.anthropic.com > API Keys. Bayaran ikut penggunaan; had harian dalam Otak Kedua."],
-      ["github", "GitHub (update, project kod, backup)", "Token GitHub (bermula dengan github_pat_)", "Buat fine-grained token di github.com > Settings > Developer settings. Lihat README untuk kebenaran yang perlu."],
-    ];
-    const paint = async () => {
-      const st = await Native.secretStatus();
-      box.replaceChildren(...SVC.map(([svc, title, ph, help]) => {
-        const res = h("p", { class: "muted", role: "status" });
-        const input = h("input", { type: "password", placeholder: st[svc] ? "•••••••• (disimpan). Tampal baharu untuk tukar" : ph, autocomplete: "off", "aria-label": title });
-        const test = async () => {
-          res.className = "muted"; res.textContent = "Menguji…";
-          const r = svc === "claude" ? await Native.testClaude(A.boot.settings.modelLight) : await Native.testGithub();
-          res.className = r.ok ? "ok-teks" : "err";
-          res.textContent = (r.ok ? "Berjaya: " : "Gagal: ") + r.detail;
-          lamp.classList.toggle("ok", !!r.ok);
-          lamp.classList.toggle("merah", !r.ok);
-        };
-        const lamp = h("span", { class: `lampu${st[svc] ? " ok" : ""}` });
-        return h("div", { class: "panel stack" },
-          h("h3", {}, lamp, title),
-          input,
-          h("p", { class: "muted" }, help),
-          h("div", { class: "row" },
-            h("button", { class: "btn utama", onclick: async () => {
-              const v = input.value.trim();
-              if (!v) { res.textContent = "Tampal key dulu."; return; }
-              try {
-                await Native.secretSet(svc, v);
-                input.value = "";
-                A.boot = await A.api("bootstrap");
-                buzz(15);
-                await test();
-                input.placeholder = "•••••••• (disimpan). Tampal baharu untuk tukar";
-              } catch (e) { res.className = "err"; res.textContent = e.message; }
-            } }, "Simpan"),
-            h("button", { class: "btn", disabled: !st[svc], onclick: test }, "Uji sambungan"),
-            st[svc] ? h("button", { class: "btn bahaya", onclick: async () => {
-              if (!confirm(`Padam ${title} daripada telefon ini?`)) return;
-              await Native.secretSet(svc, "");
-              A.boot = await A.api("bootstrap");
-              paint();
-            } }, "Padam") : null),
-          res);
-      }), h("p", { class: "muted" }, "Key disimpan dalam telefon ini sahaja, disulitkan dengan Android Keystore. Ia tak pernah dipaparkan semula, tak masuk ke backup, dan tak masuk ke repo."));
+    let cfg = Ai.config(A.boot.settings);
+    const persist = async () => {
+      const d = await A.api("settings", { method: "PUT", body: { ai: cfg } });
+      A.boot.settings = d.settings;
+      cfg = Ai.config(d.settings);
     };
-    paint();
-    return box;
-  }
+    const lampOf = (ok) => h("span", { class: `lampu${ok ? " ok" : ""}` });
 
-  /* ---------- Data & Backup (Phase 5) ---------- */
-  function dataPage(s, save) {
-    const box = h("div", { class: "stack" });
-    const restore = async (file) => {
-      let plain = file;
-      if (Backup.isEncrypted(file)) {
-        const pass = prompt("Frasa laluan backup?");
-        if (!pass) return;
-        plain = await Backup.decrypt(file, pass);
-      }
-      if (!confirm("Pulihkan akan menulis semula data sedia ada dengan data dalam backup. Teruskan?")) return;
-      const r = await A.api("import", { method: "POST", body: plain });
-      alert(`Dipulihkan: ${r.count} rekod.`);
-      location.reload();
+    const providerCard = (p, keys, usage) => {
+      const c = cfg.providers[p.id];
+      const res = h("p", { class: "muted", role: "status" });
+      const raw = h("p", { class: "muted", style: { fontSize: ".8rem", wordBreak: "break-word" } });
+      const lamp = lampOf(keys[p.id] && c.on);
+      // detail = what the provider itself said (e.g. Google's error), so Amin can see the real cause.
+      const say = (ok, text, detail = "") => {
+        res.className = ok ? "ok-teks" : "err"; res.textContent = text;
+        raw.textContent = detail ? `Mesej daripada ${p.label}: ${detail}` : "";
+        lamp.classList.toggle("ok", !!ok); lamp.classList.toggle("merah", !ok);
+      };
+      const busy = (text) => {
+        res.className = "muted"; raw.textContent = "";
+        const t0 = Date.now();
+        res.textContent = text;
+        const tick = setInterval(() => { if (!res.isConnected || !res.textContent.startsWith(text)) return clearInterval(tick); res.textContent = `${text} ${Math.round((Date.now() - t0) / 1000)} saat`; }, 1000);
+        return () => clearInterval(tick);
+      };
+      const keyIn = h("input", { type: "password", autocomplete: "off", placeholder: keys[p.id] ? "•••••••• (disimpan). Tampal baharu untuk tukar" : p.keyHint, "aria-label": `Key ${p.label}` });
+      const opt = (v, cur) => h("option", { value: v, selected: v === cur }, v || "(pilih model)");
+      const chatSel = h("select", { "aria-label": `Model Chat ${p.label}`, onchange: async () => { c.chatModel = chatSel.value; await persist(); } }, opt(c.chatModel, c.chatModel));
+      const codeSel = h("select", { "aria-label": `Model Coding ${p.label}`, onchange: async () => { c.codingModel = codeSel.value; await persist(); } }, opt(c.codingModel, c.codingModel));
+      const loadModels = async (auto) => {
+        const stop = busy("Memuat senarai model…");
+        const r = await Native.aiListModels(p.id);
+        stop();
+        if (!r.ok) { say(false, `Gagal memuat senarai model: ${r.detail}`, r.raw); return false; }
+        if (auto || !c.chatModel) c.chatModel = r.chat || c.chatModel;
+        if (auto || !c.codingModel) c.codingModel = r.coding || c.codingModel;
+        const list = [...new Set([...(r.models || []), c.chatModel, c.codingModel].filter(Boolean))];
+        chatSel.replaceChildren(...list.map((m) => opt(m, c.chatModel)));
+        codeSel.replaceChildren(...list.map((m) => opt(m, c.codingModel)));
+        await persist();
+        res.className = "muted";
+        res.textContent = `${list.length} model tersedia. Dipilih: Chat ${c.chatModel || "-"}, Coding ${c.codingModel || "-"}.${r.lite ? ` Paling laju: ${r.lite}.` : ""}`;
+        return true;
+      };
+      const test = async () => {
+        if (!c.chatModel && !(await loadModels(true))) return;
+        const stop = busy(`Menguji ${c.chatModel}…`);
+        const r = await Native.aiTest(p.id, c.chatModel);
+        stop();
+        if (r.ok && r.switchTo) {
+          c.chatModel = r.switchTo;
+          if (![...chatSel.options].some((o) => o.value === r.switchTo)) chatSel.append(opt(r.switchTo, r.switchTo));
+          chatSel.value = r.switchTo;
+          await persist();
+        }
+        say(r.ok, (r.ok ? "Berjaya: " : "Gagal: ") + r.detail, r.ok && !r.switchTo ? "" : r.raw);
+      };
+      return h("div", { class: "panel stack" },
+        h("div", { class: "row" }, h("h3", { style: { flex: 1 } }, lamp, p.label),
+          h("label", { class: "toggle", style: { margin: 0 } }, h("span", {}, c.on ? "On" : "Off"),
+            h("input", { type: "checkbox", checked: c.on, "aria-label": `${p.label} on/off`, onchange: async (e) => { c.on = e.target.checked; await persist(); paint(); } }))),
+        h("p", { class: "muted" }, p.help),
+        keyIn,
+        h("div", { class: "row" },
+          h("button", { class: "btn utama", onclick: async () => {
+            const v = keyIn.value.trim();
+            if (!v) { say(false, "Tampal key dulu."); return; }
+            try {
+              await Native.secretSet(p.id, v);
+              keyIn.value = ""; keyIn.placeholder = "•••••••• (disimpan). Tampal baharu untuk tukar";
+              A.boot = await A.api("bootstrap");
+              buzz(15);
+              if (await loadModels(!c.chatModel)) await test();
+            } catch (e) { say(false, e.message); }
+          } }, "Simpan"),
+          h("button", { class: "btn", disabled: !keys[p.id], onclick: () => loadModels(false) }, "Muat senarai model"),
+          h("button", { class: "btn", disabled: !keys[p.id], onclick: test }, "Uji sambungan"),
+          keys[p.id] ? h("button", { class: "btn bahaya", onclick: async () => {
+            if (!confirm(`Padam key ${p.label} daripada telefon ini?`)) return;
+            await Native.secretSet(p.id, ""); A.boot = await A.api("bootstrap"); paint();
+          } }, "Padam key") : null),
+        h("label", { class: "f" }, "Model untuk Chat", chatSel),
+        h("label", { class: "f" }, "Model untuk Coding (project kod)", codeSel),
+        h("label", { class: "f" }, `Had sehari untuk ${p.label} (hari ini: ${(usage.by || {})[p.id] || 0})`,
+          h("input", { type: "number", min: 0, value: c.cap, onchange: async (e) => { c.cap = Math.max(0, Number(e.target.value) || 0); await persist(); } })),
+        h("label", { class: "toggle" }, h("span", {}, "Hantar notifikasi peribadi kepada AI",
+          h("span", { class: "muted", style: { display: "block" } }, "Lalai MATI. Bila mati, notifikasi WhatsApp, email, SMS dan bank hanya diproses oleh otak sendiri, dan tak pernah dihantar kepada penyedia ini.")),
+          h("input", { type: "checkbox", checked: c.personal, onchange: async (e) => {
+            if (e.target.checked && p.privacy && !confirm(`${p.privacy}\n\nHidupkan juga?`)) { e.target.checked = false; return; }
+            c.personal = e.target.checked; await persist();
+          } })),
+        p.privacy ? h("p", { class: "muted" }, `⚠️ ${p.privacy}`) : null,
+        res, raw);
     };
+
+    const rolesCard = () => {
+      const names = Ai.PROVIDERS.map((p) => [p.id, p.label]);
+      const sel = (role) => h("select", { onchange: async (e) => { cfg.roles[role] = e.target.value; await persist(); } },
+        ...names.map(([id, label]) => h("option", { value: id, selected: cfg.roles[role] === id }, label)));
+      const order = h("div", { class: "stack" }, ...cfg.order.map((id, i) => h("div", { class: "row" },
+        h("span", { style: { flex: 1 } }, `${i + 1}. ${Ai.byId(id).label}${cfg.providers[id].on ? "" : " (off)"}`),
+        h("button", { class: "btn", disabled: i === 0, "aria-label": "Naikkan", onclick: async () => { [cfg.order[i - 1], cfg.order[i]] = [cfg.order[i], cfg.order[i - 1]]; await persist(); paint(); } }, "↑"),
+        h("button", { class: "btn", disabled: i === cfg.order.length - 1, "aria-label": "Turunkan", onclick: async () => { [cfg.order[i + 1], cfg.order[i]] = [cfg.order[i], cfg.order[i + 1]]; await persist(); paint(); } }, "↓"))));
+      return h("div", { class: "panel stack" },
+        h("h3", {}, "Peranan dan susunan sandaran"),
+        h("label", { class: "f" }, "Penyedia untuk Chat", sel("chat")),
+        h("label", { class: "f" }, "Penyedia untuk Coding (project kod)", sel("coding")),
+        h("p", { class: "muted" }, "Kalau penyedia utama gagal atau kena had, Asbab cuba penyedia seterusnya yang hidup ikut susunan ini. Kalau semua gagal, Asbab jawab dengan otak sendiri dan beritahu kau."),
+        order);
+    };
+
+    const githubCard = (keys) => {
+      const res = h("p", { class: "muted", role: "status" });
+      const lamp = lampOf(keys.github);
+      const input = h("input", { type: "password", autocomplete: "off", placeholder: keys.github ? "•••••••• (disimpan). Tampal baharu untuk tukar" : "Token GitHub (bermula dengan github_pat_)", "aria-label": "Token GitHub" });
+      const test = async () => {
+        res.className = "muted"; res.textContent = "Menguji…";
+        const r = await Native.testGithub();
+        res.className = r.ok ? "ok-teks" : "err"; res.textContent = (r.ok ? "Berjaya: " : "Gagal: ") + r.detail;
+        lamp.classList.toggle("ok", !!r.ok); lamp.classList.toggle("merah", !r.ok);
+      };
+      return h("div", { class: "panel stack" },
+        h("h3", {}, lamp, "GitHub (update, project kod, backup)"),
+        input,
+        h("p", { class: "muted" }, "Buat fine-grained token di github.com > Settings > Developer settings. Lihat PANDUAN.md untuk kebenaran yang perlu."),
+        h("div", { class: "row" },
+          h("button", { class: "btn utama", onclick: async () => {
+            if (!input.value.trim()) return;
+            await Native.secretSet("github", input.value.trim()); input.value = "";
+            A.boot = await A.api("bootstrap"); await test();
+          } }, "Simpan"),
+          h("button", { class: "btn", disabled: !keys.github, onclick: test }, "Uji sambungan"),
+          keys.github ? h("button", { class: "btn bahaya", onclick: async () => { if (confirm("Padam token GitHub?")) { await Native.secretSet("github", ""); A.boot = await A.api("bootstrap"); paint(); } } }, "Padam") : null),
+        res);
+    };
+
     const paint = async () => {
       const keys = await Native.secretStatus();
-      const last = await Native.backupStatus();
-      const cur = A.boot.settings;
-      const res = h("p", { class: "muted", role: "status" });
-      const repoIn = h("input", { value: cur.backupRepo || "", placeholder: "username/asbab-backup", "aria-label": "Repo backup" });
-      const passIn = h("input", { type: "password", placeholder: keys.backup ? "•••••••• (disimpan). Tampal baharu untuk tukar" : "Frasa laluan, sekurang-kurangnya 8 aksara", autocomplete: "new-password", "aria-label": "Frasa laluan backup" });
+      const usage = await Native.aiUsage();
+      cfg = Ai.config(A.boot.settings);
       box.replaceChildren(
-        h("div", { class: "panel stack" },
-          h("h3", {}, h("span", { class: `lampu${last && last.ok ? " ok" : ""}` }), "Backup automatik harian (disulitkan)"),
-          h("p", { class: "muted" }, "Setiap hari, semua catatan, chat, tetapan dan personaliti disulitkan dalam telefon, kemudian disimpan dalam repo GitHub Private kau (folder asbab-backup). Tanpa frasa laluan, fail itu tak boleh dibaca sesiapa. Key, token dan data mentah daripada app lain tak dimasukkan."),
-          h("label", { class: "f" }, "Repo GitHub Private untuk backup", repoIn),
-          h("label", { class: "f" }, "Frasa laluan backup (simpan di tempat selamat: tanpanya backup tak boleh dipulihkan)", passIn),
-          h("div", { class: "row" },
-            h("button", { class: "btn utama", onclick: async () => {
-              try {
-                const repo = repoIn.value.trim();
-                if (repo && !GitHubApi.cleanRepo(repo)) throw new Error("Tulis repo dalam bentuk username/nama-repo.");
-                if (passIn.value) {
-                  if (passIn.value.length < 8) throw new Error("Frasa laluan mesti sekurang-kurangnya 8 aksara.");
-                  await Native.secretSet("backup", passIn.value);
-                  passIn.value = "";
-                }
-                await save({ backupRepo: repo ? GitHubApi.cleanRepo(repo) : "" });
-                Native.workSync();
-                res.textContent = "Disimpan.";
-                setTimeout(paint, 600);
-              } catch (e) { res.className = "err"; res.textContent = e.message; }
-            } }, "Simpan"),
-            h("button", { class: "btn", disabled: !cur.backupRepo || !keys.backup || !keys.github, onclick: async () => {
-              res.className = "muted"; res.textContent = "Membuat backup…";
-              const r = await Native.backupNow();
-              res.className = r.ok ? "ok-teks" : "err"; res.textContent = r.message;
-            } }, "Backup sekarang")),
-          !keys.github ? h("p", { class: "muted" }, "Perlu token GitHub dalam Sambungan & API (kebenaran Contents: Read and write untuk repo backup).") : null,
-          last ? h("p", { class: last.ok ? "muted" : "err" }, `Kali terakhir: ${new Date(last.at).toLocaleString("ms-MY")} · ${last.message}`) : null,
-          res),
-        h("div", { class: "panel stack" },
-          h("h3", {}, "Eksport dan pulih manual"),
-          h("p", { class: "muted" }, "Eksport menghasilkan fail backup yang disulitkan dengan frasa laluan yang kau taip. Simpan di Drive, emel atau komputer."),
-          h("div", { class: "row" },
-            h("button", { class: "btn", onclick: async () => {
-              const pass = prompt("Frasa laluan untuk fail eksport (sekurang-kurangnya 8 aksara)?");
-              if (!pass) return;
-              try {
-                const file = await Backup.encrypt(await A.api("export"), pass);
-                await Native.shareFile(`asbab-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(file));
-              } catch (e) { alert(e.message); }
-            } }, "Eksport"),
-            h("label", { class: "btn" }, "Pulihkan dari fail", h("input", { type: "file", accept: "application/json,.json", hidden: true, onchange: async (e) => {
-              const f = e.target.files[0]; if (!f) return;
-              try { await restore(JSON.parse(await f.text())); } catch (err) { alert(err.message); }
-            } })),
-            h("button", { class: "btn", disabled: !cur.backupRepo || !keys.github, onclick: async () => {
-              try {
-                const r = await Native.github("GET", `/repos/${cur.backupRepo}/contents/asbab-backup/terkini.json`);
-                if (r.status !== 200) throw new Error(r.message || "Backup tak dijumpai dalam repo.");
-                await restore(JSON.parse(GitHubApi.b64decode(r.data.content)));
-              } catch (err) { alert(err.message); }
-            } }, "Pulihkan dari GitHub"))));
-    };
-    paint();
-    return box;
-  }
-
-  /* ---------- Butang Terapung (Phase 4) ---------- */
-  const RAIL_ITEMS = [
-    ["tutup", "Tutup (sentiasa ada)"], ["suara", "Arahan suara"], ["chat", "Chat"], ["hari", "Hari Ini"], ["project", "Project"],
-    ["catatan", "Catatan"], ["pemisah", "Garis pemisah"], ["projek", "3 project terkini (titik warna)"], ["cincin", "Cincin penggunaan otak kedua"],
-    ["tetapan", "Profil / Tetapan"], ["kamera", "Kamera"], ["lampu", "Lampu suluh"], ["kunci", "Kunci skrin"],
-  ];
-  function railOrder(saved) {
-    const seen = new Map();
-    for (const it of saved || []) if (RAIL_ITEMS.some(([id]) => id === it.id) && !seen.has(it.id)) seen.set(it.id, it.on !== false);
-    for (const [id] of RAIL_ITEMS) if (!seen.has(id)) seen.set(id, true);
-    seen.set("tutup", true);
-    return [...seen].map(([id, on]) => ({ id, on }));
-  }
-
-  function butangPage(s, save) {
-    const box = h("div", { class: "stack" });
-    let items = railOrder(s.bubbleItems);
-    const label = (id) => RAIL_ITEMS.find((x) => x[0] === id)[1];
-    const paint = async () => {
-      const st = await Native.accessStatus();
-      const cur = A.boot.settings;
-      const res = h("p", { class: "muted", role: "status" });
-      const list = h("div", { class: "stack" }, ...items.map((it, i) => h("div", { class: "row" },
-        h("label", { class: "toggle", style: { flex: 1 } }, h("span", {}, label(it.id)),
-          h("input", { type: "checkbox", checked: it.on, disabled: it.id === "tutup", onchange: (e) => { it.on = e.target.checked; } })),
-        h("button", { class: "btn", "aria-label": `Naikkan ${label(it.id)}`, disabled: i === 0, onclick: () => { [items[i - 1], items[i]] = [items[i], items[i - 1]]; paint(); } }, "↑"),
-        h("button", { class: "btn", "aria-label": `Turunkan ${label(it.id)}`, disabled: i === items.length - 1, onclick: () => { [items[i + 1], items[i]] = [items[i], items[i + 1]]; paint(); } }, "↓"))));
-      box.replaceChildren(
-        h("div", { class: "panel stack" },
-          h("h3", {}, "Butang bulan di atas app lain"),
-          h("label", { class: "toggle" }, h("span", {}, "Paparkan butang bulan terapung", h("span", { class: "muted", style: { display: "block" } }, "Muncul di atas semua app, kecuali bila Asbab sendiri dibuka.")),
-            h("input", { type: "checkbox", checked: !!cur.bubble, onchange: async (e) => {
-              await save({ bubble: e.target.checked });
-              if (e.target.checked && !st.overlay && !st.browser) Native.openSettings("overlay");
-              await Native.bubbleSync({ unhide: true });
-              setTimeout(paint, 500);
-            } })),
-          st.browser ? h("p", { class: "muted" }, "Hanya berfungsi dalam app Android.") : h("div", { class: "row" },
-            h("span", { class: `lampu${st.overlay ? " ok" : ""}` }), h("span", { style: { flex: 1 } }, st.overlay ? "Kebenaran \"Papar di atas app lain\" diberi" : "Perlu kebenaran \"Papar di atas app lain\""),
-            st.overlay ? null : h("button", { class: "btn utama", onclick: () => Native.openSettings("overlay") }, "Benarkan")),
-          h("p", { class: "muted" }, "Seret untuk alih; ia melekat ke tepi skrin. Seret ke bawah skrin untuk tidurkan. Tekan untuk buka jalur menu; tekan di luar untuk tutup."),
-          h("div", { class: "row" },
-            h("button", { class: "btn", onclick: async () => { await Native.bubbleSync({ unhide: true }); res.textContent = "Butang bulan dikejutkan."; } }, "Tunjuk semula"),
-            h("button", { class: "btn", onclick: async () => { await Native.bubbleSync({ resetPosition: true, unhide: true }); res.textContent = "Kedudukan dikembalikan."; } }, "Kembalikan kedudukan")),
-          res),
-        h("div", { class: "panel stack" },
-          h("h3", {}, "Isi dan susunan jalur"),
-          h("p", { class: "muted" }, "Hidupkan atau matikan setiap ikon, dan susun dengan ↑ ↓. Kunci skrin perlu Kebolehcapaian Asbab dihidupkan (Asbab tak membaca skrin selagi suis \"Baca isi skrin app\" ditutup)."),
-          list,
-          h("button", { class: "btn utama", onclick: async () => { await save({ bubbleItems: items }); await Native.bubbleSync(); res.textContent = "Disimpan."; } }, "Simpan susunan")),
-        h("div", { class: "panel stack" },
-          h("h3", {}, "Butang bulan dalam Asbab"),
-          h("label", { class: "toggle" }, h("span", {}, "Paparkan butang bulan dalam app"), h("input", { type: "checkbox", checked: localStorage.getItem("asbab:moonOff") !== "1", onchange: (e) => {
-            localStorage.setItem("asbab:moonOff", e.target.checked ? "0" : "1");
-            const m = $("#moonbtn"); if (m) m.style.display = e.target.checked ? "" : "none";
-          } }))));
+        h("p", { class: "muted" }, "Otak kedua boleh guna beberapa AI. Setiap jawapan dilabel dengan AI yang digunakan. Key disimpan dalam telefon ini sahaja (Android Keystore), tak pernah dipaparkan semula, tak masuk ke backup dan tak masuk ke repo."),
+        rolesCard(),
+        ...Ai.PROVIDERS.map((p) => providerCard(p, keys, usage)),
+        githubCard(keys));
     };
     paint();
     return box;

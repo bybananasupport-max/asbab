@@ -244,6 +244,112 @@ class AsbabPlugin : Plugin() {
         }
     }
 
+    /* ---------- Phase 5.1: several AI providers (Gemini, Claude, OpenAI) ---------- */
+
+    private fun errObj(e: com.bybanana.asbab.core.AiError) = JSObject().put("ok", false).put("detail", e.message).put("raw", e.detail)
+
+    /**
+     * Models this key can use, plus the ones Asbab would pick for Chat and Coding (and the fastest "lite" one).
+     * Always resolves: {ok, models, chat, coding, lite} or {ok:false, detail, raw}, so the screen never waits forever.
+     */
+    @PluginMethod
+    fun aiListModels(call: PluginCall) {
+        val spec = com.bybanana.asbab.core.Providers.byId(call.getString("provider") ?: "") ?: return call.reject("Penyedia tak dikenali")
+        val key = SecretStore.get(context, spec.id) ?: return call.resolve(JSObject().put("ok", false).put("detail", "${spec.label}: key belum disimpan.").put("raw", ""))
+        net.execute {
+            try {
+                val models = AiClient.listModels(spec, key).distinct().sorted()
+                call.resolve(JSObject().apply {
+                    put("ok", true)
+                    put("models", JSArray().apply { models.forEach { put(it) } })
+                    put("chat", spec.pickDefault(models, "chat"))
+                    put("coding", spec.pickDefault(models, "coding"))
+                    if (spec is com.bybanana.asbab.core.GeminiSpec) put("lite", spec.pickLite(models))
+                })
+            } catch (e: AiFailure) {
+                call.resolve(errObj(e.error))
+            } catch (e: Throwable) {
+                call.resolve(errObj(AiClient.network(spec, e, AiClient.LIST_MS).error))
+            }
+        }
+    }
+
+    /**
+     * "Uji sambungan": a tiny request to the chosen model (short time limit). For Gemini, if that model is too
+     * slow (timeout), Asbab tries the newest Flash-Lite model and reports it as {switchTo}.
+     */
+    @PluginMethod
+    fun aiTest(call: PluginCall) {
+        val spec = com.bybanana.asbab.core.Providers.byId(call.getString("provider") ?: "") ?: return call.reject("Penyedia tak dikenali")
+        val key = SecretStore.get(context, spec.id) ?: return call.resolve(JSObject().put("ok", false).put("detail", "Key ${spec.label} belum disimpan.").put("raw", ""))
+        val model = call.getString("model").orEmpty()
+        if (model.isBlank()) return call.resolve(JSObject().put("ok", false).put("detail", "Pilih model dulu (tekan \"Muat senarai model\").").put("raw", ""))
+        net.execute {
+            val started = System.currentTimeMillis()
+            fun ping(m: String) = AiClient.complete(spec, key, m, "Balas dengan satu perkataan sahaja.", "Balas: ok", 256, AiClient.TEST_MS)
+            try {
+                ping(model)
+                Repo(context).bumpUsage(spec.id)
+                call.resolve(JSObject().put("ok", true).put("detail", "Bersambung (model $model, ${(System.currentTimeMillis() - started) / 100 / 10.0} saat)."))
+            } catch (e: Throwable) {
+                val err = (e as? AiFailure)?.error ?: AiClient.network(spec, e, AiClient.TEST_MS).error
+                val timedOut = err.detail.startsWith("SocketTimeoutException")
+                if (timedOut && spec is com.bybanana.asbab.core.GeminiSpec) {
+                    val lite = try { spec.pickLite(AiClient.listModels(spec, key)) } catch (x: Throwable) { null }
+                    if (lite != null && lite != model) {
+                        try {
+                            ping(lite)
+                            Repo(context).bumpUsage(spec.id)
+                            return@execute call.resolve(JSObject().put("ok", true).put("switchTo", lite)
+                                .put("detail", "$model terlalu perlahan (tiada jawapan dalam ${AiClient.TEST_MS / 1000} saat). $lite berjaya, jadi model Chat ditukar ke $lite.")
+                                .put("raw", err.detail))
+                        } catch (x: Throwable) {
+                            val e2 = (x as? AiFailure)?.error ?: AiClient.network(spec, x, AiClient.TEST_MS).error
+                            return@execute call.resolve(errObj(err.copy(message = "${err.message} Cubaan dengan $lite juga gagal: ${e2.message}", detail = "${err.detail} | $lite: ${e2.detail}")))
+                        }
+                    }
+                }
+                call.resolve(errObj(err))
+            }
+        }
+    }
+
+    /**
+     * Second brain answer for a role ("chat" or "coding") with automatic fallback. Text arrives through
+     * "aiDelta" events ({id, text}); resolves {text, provider, label, model, fallback, failures}.
+     * Rejects with a plain-Malay message when every provider failed (the UI then answers with the own brain).
+     */
+    @PluginMethod
+    fun aiStream(call: PluginCall) {
+        val id = call.getString("id") ?: ""
+        val role = if (call.getString("role") == "coding") "coding" else "chat"
+        val system = call.getString("system") ?: ""
+        val prompt = call.getString("prompt") ?: return call.reject("prompt diperlukan")
+        val maxTokens = call.getInt("maxTokens") ?: if (role == "coding") 16_000 else 1_200
+        net.execute {
+            try {
+                val a = AiRouter.run(context, role, false, system, prompt, maxTokens) { soFar ->
+                    notifyListeners("aiDelta", JSObject().put("id", id).put("text", soFar))
+                }
+                call.resolve(JSObject().apply {
+                    put("text", a.text); put("provider", a.provider); put("label", a.label); put("model", a.model)
+                    put("fallback", a.fallback); put("failures", JSArray().apply { a.failures.forEach { put(it) } })
+                })
+            } catch (e: AiFailure) {
+                call.reject(e.error.message)
+            } catch (e: Throwable) {
+                call.reject("Otak kedua: ralat tak dijangka [${e.javaClass.simpleName}: ${e.message ?: ""}]")
+            }
+        }
+    }
+
+    /** Today's usage per provider: {count, by: {gemini: n, ...}}. */
+    @PluginMethod
+    fun aiUsage(call: PluginCall) {
+        val (count, by) = com.bybanana.asbab.core.AiUsage.parse(db.get("usage:${Repo.today()}"))
+        call.resolve(JSObject().put("count", count).put("by", JSObject().apply { for ((k, v) in by) put(k, v) }))
+    }
+
     /* ---------- Phase 3: phone access ---------- */
 
     @PluginMethod

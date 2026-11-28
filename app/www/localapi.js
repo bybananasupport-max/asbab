@@ -6,10 +6,10 @@
 // Claude arrives in Phase 3 and GitHub in Phase 5.
 (function (root, factory) {
   const req = typeof require === "function" ? require : null;
-  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"), root.SecondBrain || req("./secondbrain.js"), root.GitHubApi || req("./github.js"));
+  const api = factory(root.Core || req("./core.js"), root.Brain || req("./brain.js"), root.SecondBrain || req("./secondbrain.js"), root.GitHubApi || req("./github.js"), root.Ai || req("./ai.js"));
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.LocalApi = api;
-})(typeof self !== "undefined" ? self : this, function (Core, Brain, SecondBrain, GitHubApi) {
+})(typeof self !== "undefined" ? self : this, function (Core, Brain, SecondBrain, GitHubApi, Ai) {
   const { nowMY, addDays, uid, DEFAULT_SETTINGS, SCENES, NOTE_KINDS } = Core;
   const MAIN_ROOM = "utama";
 
@@ -96,14 +96,16 @@
       return added;
     }
     const usageToday = () => get(`usage:${now().date}`, { count: 0 });
-    async function bumpUsage() {
+    // Usage per provider: { count: total, by: { gemini: 3, ... } }. On the phone, Kotlin counts each request.
+    async function bumpUsage(provider) {
       const key = `usage:${now().date}`;
       const u = await get(key, { count: 0 });
       u.count = (u.count || 0) + 1;
+      u.by = { ...(u.by || {}), [provider]: ((u.by || {})[provider] || 0) + 1 };
       await put(key, u);
       return u;
     }
-    const keys0 = async () => { try { return await secrets(); } catch { return { claude: false, github: false }; } };
+    const keys0 = async () => { try { return await secrets(); } catch { return { github: false }; } };
     async function devlog(text) {
       const list = await get("devlog", []);
       list.unshift({ ts: Date.now(), text });
@@ -130,7 +132,7 @@
         }
         return {
           version, settings: s, rooms: await rooms(), projects: await projects(),
-          usage: await usageToday(), ...(await (async () => { const k = await keys0(); return { ai: !!k.claude, github: !!k.github }; })()),
+          usage: await usageToday(), ...(await (async () => { const k = await keys0(); return { ai: Ai.ready(s, k), github: !!k.github, aiKeys: Object.fromEntries(Ai.IDS.map((id) => [id, !!k[id]])) }; })()),
         };
       }
 
@@ -172,20 +174,20 @@
           const msg = await addMessage(roomId, { role: "asbab", text: local.reply, ai: false, saved: local.saved || 0 });
           return { user, messages: [msg], navigate: local.navigate || null };
         }
-        // Second brain (Claude), only when allowed.
+        // Second brain (Gemini, Claude or OpenAI), only when allowed.
         const k = await keys0();
-        if (!s.aiEnabled || !k.claude) {
+        if (!Ai.ready(s, k)) {
           const msg = await addMessage(roomId, {
             role: "asbab", ai: false,
             text: s.aiEnabled
-              ? "Otak kedua belum disambung. Tampal key Claude dalam Tetapan > Sambungan & API. Buat masa ni aku cuma jawab dari catatan aku sendiri. Taip \"tolong\" untuk senarai perkara yang aku boleh buat."
+              ? "Otak kedua belum disambung. Hidupkan satu penyedia dan tampal key dalam Tetapan > Sambungan & API. Buat masa ni aku cuma jawab dari catatan aku sendiri. Taip \"tolong\" untuk senarai perkara yang aku boleh buat."
               : "Aku dalam mod tanpa AI sekarang, jadi aku cuma boleh jawab perkara yang dah ada dalam catatan aku. Taip \"tolong\" untuk senarai perkara yang aku boleh buat.",
           });
           return { user, messages: [msg] };
         }
         const usage = await usageToday();
-        if (usage.count >= s.aiDailyCap) {
-          const msg = await addMessage(roomId, { role: "asbab", ai: false, text: `Had otak kedua hari ni (${s.aiDailyCap} kali) dah capai. Aku masih boleh jawab apa yang ada dalam catatan.` });
+        if (!Ai.chain(s, "chat", { keys: k, used: usage.by || {} }).length) {
+          const msg = await addMessage(roomId, { role: "asbab", ai: false, text: "Had harian semua otak kedua dah habis hari ni. Aku masih boleh jawab apa yang ada dalam catatan." });
           return { user, messages: [msg] };
         }
         if (s.askBeforeAI && !body.allowAI) return { user, askAI: true };
@@ -195,7 +197,7 @@
           settings: s, now: n, prayer: await prayer(s.zone, n.date), notes: await notes(),
           history: (await messages(roomId)).slice(0, -1), project,
         });
-        return { user, needAI: true, context, model: s.modelLight };
+        return { user, needAI: true, context, role: "chat" };
       }
 
       if (a === "chat" && b === "finish" && method === "POST") {
@@ -203,12 +205,19 @@
         const { reply, notes: found } = SecondBrain.parseAnswer(body.text, now().date);
         const saved = found.length ? await addNotes(found, "asbab") : [];
         if (saved.length) changed();
-        const message = await addMessage(roomId, { role: "asbab", text: reply, ai: true, saved: saved.length });
-        const usage = await bumpUsage();
-        return { message, saved, usage };
+        const provider = Ai.byId(body.provider) ? body.provider : "";
+        const message = await addMessage(roomId, { role: "asbab", text: reply, ai: true, provider, fallback: !!body.fallback, saved: saved.length });
+        return { message, saved, usage: await usageToday() };
       }
 
-      if (a === "usage" && b === "bump" && method === "POST") return { usage: await bumpUsage() };
+      // When every provider failed: the own brain answers and says why, in plain Malay.
+      if (a === "chat" && b === "fallback" && method === "POST") {
+        const message = await addMessage(body.roomId || MAIN_ROOM, { role: "asbab", ai: false, text: String(body.text || "Otak kedua tak dapat dihubungi sekarang.") });
+        return { message };
+      }
+
+      // Counting happens in Kotlin on the phone; this route is for the browser and tests.
+      if (a === "usage" && b === "bump" && method === "POST") return { usage: await bumpUsage(Ai.byId(body.provider) ? body.provider : "gemini") };
 
       if (a === "today" && method === "GET") {
         const n = now();
@@ -334,7 +343,7 @@
           await put(`proposal:${b}`, proposal);
           p.pending = true;
           await put("projects", list);
-          await addMessage(`p-${b}`, { role: "asbab", ai: true, text: `Cadangan sedia: ${proposal.summary}`, card: "proposal" });
+          await addMessage(`p-${b}`, { role: "asbab", ai: true, provider: Ai.byId(body.provider) ? body.provider : "", fallback: !!body.fallback, text: `Cadangan sedia: ${proposal.summary}`, card: "proposal" });
           return { proposal };
         }
         if (c === "approve" && method === "POST") {
